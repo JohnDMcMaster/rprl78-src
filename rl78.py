@@ -330,7 +330,7 @@ class ProtoOCD:
         size = size8(len(data))
         if size is None: return None
         self.send_cmd(
-            struct.pack('<BHB%dB' (len(data)), self.WRITE, addr, size, *data))
+            struct.pack('<BHB%dB' % (len(data)), self.WRITE, addr, size, *data))
         return self.read_all(1)[0] == self.WRITE
 
     def call_f07e0(self):
