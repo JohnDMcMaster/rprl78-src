@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pyftdi.gpio import GpioController
 import serial
+import pyftdi.serialext
 import time, struct, binascii, code, os
 
 
@@ -12,11 +13,14 @@ def delay(amount):
             return
 
 
-# for C232HM-DDHSL-0 cable
+# For C232HM-DDHSL-0 cable
+# FIXME: TX/RX? I'd guess yellow/green, but GREEN is used by TOOL0
 WIRE_ORANGE = 1 << 0
 WIRE_YELLOW = 1 << 1
+# TOOL0
 WIRE_GREEN = 1 << 2
 WIRE_BROWN = 1 << 3
+# RESET
 WIRE_GRAY = 1 << 4
 WIRE_PURPLE = 1 << 5
 WIRE_WHITE = 1 << 6
@@ -25,7 +29,7 @@ WIRE_BLUE = 1 << 7
 
 class Reset:
     def __init__(self, url):
-        # init gpio mode with gray (conncted to RESET) and green (TOOL0) as outputs
+        # init gpio mode with gray (connected to RESET) and green (TOOL0) as outputs
         self.gpio = GpioController()
         self.gpio.open_from_url(url, direction=WIRE_GRAY | WIRE_GREEN)
 
@@ -330,7 +334,8 @@ class ProtoOCD:
         size = size8(len(data))
         if size is None: return None
         self.send_cmd(
-            struct.pack('<BHB%dB' % (len(data)), self.WRITE, addr, size, *data))
+            struct.pack('<BHB%dB' % (len(data)), self.WRITE, addr, size,
+                        *data))
         return self.read_all(1)[0] == self.WRITE
 
     def call_f07e0(self):
@@ -350,12 +355,18 @@ class RL78:
     BAUDRATE_INIT = 115200
     BAUDRATE_FAST = 1000000
 
-    def __init__(self, gpio_url, uart_port):
+    def __init__(self, gpio_url, uart_port=None):
         self.reset_ctl = Reset(gpio_url)
-        self.port = serial.Serial(uart_port,
-                                  baudrate=self.BAUDRATE_INIT,
-                                  timeout=0,
-                                  stopbits=2)
+        if 0:
+            self.port = serial.Serial(uart_port,
+                                      baudrate=self.BAUDRATE_INIT,
+                                      timeout=0,
+                                      stopbits=2)
+        if 1:
+            # Original code used serial.Serial
+            # However claiming with pyftdi unbinds kernel device
+            self.port = pyftdi.serialext.serial_for_url(
+                gpio_url, baudrate=self.BAUDRATE_INIT, timeout=0, stopbits=2)
         self.a = ProtoA(self.port)
         self.ocd = ProtoOCD(self.port)
         self.mode = None
@@ -387,11 +398,27 @@ class RL78:
         return True
 
 
-if __name__ == '__main__':
-    rl78 = RL78('ftdi://ftdi:232h/0', 'COM5')
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description='RL78 tool')
+    parser.add_argument(
+        '--gpio-url',
+        #default='ftdi://ftdi:232h/0',
+        # Default device
+        default='ftdi:///1',
+        help='FTDI GPIO URL')
+    parser.add_argument('--uart-port', default='COM5', help='FTDI device')
+    args = parser.parse_args()
+
+    rl78 = RL78(gpio_url=args.gpio_url, uart_port=args.uart_port)
     if not rl78.reset(RL78.MODE_A_1WIRE):
         print('failed to init a')
-        exit()
+        return
     print('sig', binascii.hexlify(rl78.a.silicon_sig()))
     print('sec', binascii.hexlify(rl78.a.security_get()))
     code.InteractiveConsole(locals=locals()).interact('Entering shell...')
+
+
+if __name__ == "__main__":
+    main()
