@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from pyftdi.gpio import GpioController
 import serial
 import time, struct, binascii, code, os
