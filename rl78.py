@@ -3,12 +3,14 @@ from pyftdi.gpio import GpioController
 import serial
 import time, struct, binascii, code, os
 
+
 def delay(amount):
     now = start = time.perf_counter()
     while True:
         now = time.perf_counter()
         if now - start >= amount:
             return
+
 
 # for C232HM-DDHSL-0 cable
 WIRE_ORANGE = 1 << 0
@@ -20,11 +22,12 @@ WIRE_PURPLE = 1 << 5
 WIRE_WHITE = 1 << 6
 WIRE_BLUE = 1 << 7
 
+
 class Reset:
     def __init__(s, url):
         # init gpio mode with gray (conncted to RESET) and green (TOOL0) as outputs
         s.gpio = GpioController()
-        s.gpio.open_from_url(url, direction = WIRE_GRAY | WIRE_GREEN)
+        s.gpio.open_from_url(url, direction=WIRE_GRAY | WIRE_GREEN)
 
     def enter_rom(s):
         s.gpio.set_direction(WIRE_GRAY | WIRE_GREEN)
@@ -40,6 +43,7 @@ class Reset:
         # stop driving TOOL0 (with this ftdi device - another one takes over)
         s.gpio.set_direction(WIRE_GRAY)
 
+
 def read_all(port, size):
     data = b''
     while len(data) < size:
@@ -47,14 +51,17 @@ def read_all(port, size):
     assert len(data) == size
     return data
 
+
 def size8(size):
     if size <= 0 or size > 0x100: return None
     if size == 0x100: size = 0
     return size
 
+
 def pack24(x):
     assert x < (1 << 24)
     return struct.pack('<HB', x & 0xffff, x >> 16)
+
 
 class ProtoA:
     SOH = 0x01
@@ -62,29 +69,29 @@ class ProtoA:
     ETB = 0x17
     ETX = 0x03
 
-    COM_RESET           = 0x00
-    COM_19              = 0x19 # undocumented cmd. sets FSSQ=2
-    COM_ERASE           = 0x22
-    COM_PROG            = 0x40
-    COM_VERIFY          = 0x13
-    COM_BLANK_CHECK     = 0x32
-    COM_BAUDRATE_SET    = 0x9a
-    COM_SILICON_SIG     = 0xc0
-    COM_SEC_SET         = 0xa0
-    COM_SEC_GET         = 0xa1
-    COM_SEC_RLS         = 0xa2
-    COM_CHECKSUM        = 0xb0
+    COM_RESET = 0x00
+    COM_19 = 0x19  # undocumented cmd. sets FSSQ=2
+    COM_ERASE = 0x22
+    COM_PROG = 0x40
+    COM_VERIFY = 0x13
+    COM_BLANK_CHECK = 0x32
+    COM_BAUDRATE_SET = 0x9a
+    COM_SILICON_SIG = 0xc0
+    COM_SEC_SET = 0xa0
+    COM_SEC_GET = 0xa1
+    COM_SEC_RLS = 0xa2
+    COM_CHECKSUM = 0xb0
 
-    ST_COM_NUM_ERR  = 0x04
-    ST_PARAM_ERR    = 0x05
-    ST_ACK          = 0x06
-    ST_SUM_ERR      = 0x07
-    ST_VERIFY_ERR   = 0x0f
-    ST_PROTECT_ERR  = 0x10
-    ST_NACK         = 0x15
-    ST_ERASE_ERR    = 0x1a
-    ST_BLANK_ERR    = 0x1b
-    ST_WRITE_ERR    = 0x1c
+    ST_COM_NUM_ERR = 0x04
+    ST_PARAM_ERR = 0x05
+    ST_ACK = 0x06
+    ST_SUM_ERR = 0x07
+    ST_VERIFY_ERR = 0x0f
+    ST_PROTECT_ERR = 0x10
+    ST_NACK = 0x15
+    ST_ERASE_ERR = 0x1a
+    ST_BLANK_ERR = 0x1b
+    ST_WRITE_ERR = 0x1c
 
     def __init__(s, port):
         s.port = port
@@ -116,23 +123,24 @@ class ProtoA:
         #print('recv %s' % (binascii.hexlify(data)))
         if s._checksum(len_b + data[:LEN]) != data[LEN]:
             print('bad checksum')
-        if data[LEN+1] != s.ETX:
+        if data[LEN + 1] != s.ETX:
             print('bad footer')
         return data[:LEN]
 
-    def _send_frame(s, data, is_cmd = True, last_data = True):
+    def _send_frame(s, data, is_cmd=True, last_data=True):
         header = s.SOH if is_cmd else s.STX
         trailer = s.ETX if last_data else s.ETB
         LEN = size8(len(data))
         SUM = s._checksum(struct.pack('B', LEN) + data)
-        cmd = struct.pack('BB%dBBB' % (len(data)), header, LEN, *data, SUM, trailer)
+        cmd = struct.pack('BB%dBBB' % (len(data)), header, LEN, *data, SUM,
+                          trailer)
         #print('send %s' % (binascii.hexlify(cmd)))
         s.port.write(cmd)
         # discard the loopback bytes
         s.read_all(len(cmd))
         return s.recv_frame()
 
-    def send_frame(s, data, is_cmd = True, last_data = True):
+    def send_frame(s, data, is_cmd=True, last_data=True):
         while True:
             r = s._send_frame(data, is_cmd, last_data)
             if r[0] != s.ST_SUM_ERR:
@@ -142,7 +150,8 @@ class ProtoA:
         return s.send_frame(struct.pack('B', s.COM_RESET))
 
     def set_baudrate(s, baudrate, voltage):
-        return s.send_frame(struct.pack('BBB', s.COM_BAUDRATE_SET, baudrate, voltage))
+        return s.send_frame(
+            struct.pack('BBB', s.COM_BAUDRATE_SET, baudrate, voltage))
 
     def silicon_sig(s):
         r = s.send_frame(struct.pack('B', s.COM_SILICON_SIG))
@@ -167,7 +176,7 @@ class ProtoA:
         if r[0] != s.ST_ACK: return False
         for i in range(0, len(data), 0x100):
             last_data = len(data) - i <= 0x100
-            r = s.send_frame(data[i:i+0x100], False, last_data)
+            r = s.send_frame(data[i:i + 0x100], False, last_data)
         return r[0] == s.ST_ACK and r[1] == s.ST_ACK
 
     def checksum(s, addr, size):
@@ -216,7 +225,7 @@ class ProtoA:
         if r[0] != s.ST_ACK: return False
         for i in range(0, len(data), 0x100):
             last_data = len(data) - i <= 0x100
-            r = s.send_frame(data[i:i+0x100], False, last_data)
+            r = s.send_frame(data[i:i + 0x100], False, last_data)
         if r[0] != s.ST_ACK or r[1] != s.ST_ACK:
             return False
         # iverify status
@@ -231,8 +240,9 @@ class ProtoA:
         # XXX should be able to handle multiple blocks, not sure why it hangs
         #s.program(addr, data)
         for i in range(0, len(data), 0x100):
-            s.program(addr + i, data[i:i+0x100])
+            s.program(addr + i, data[i:i + 0x100])
         return s.verify(addr, data)
+
 
 class ProtoOCD:
     SYNC = 0x00
@@ -254,8 +264,10 @@ class ProtoOCD:
 
     def __init__(s, port):
         s.port = port
+
     def read_all(s, size):
         return read_all(s.port, size)
+
     def checksum(s, data):
         csum = 0
         for d in data:
@@ -264,22 +276,26 @@ class ProtoOCD:
         csum -= 1
         csum &= 0xff
         return csum
+
     def send_cmd(s, cmd):
         #print('send %s' % (binascii.hexlify(cmd)))
         s.port.write(cmd)
         # discard the loopback bytes
         s.read_all(len(cmd))
+
     def wait_ack(s):
         while s.read_all(1) != bytes([s.SYNC]):
             pass
+
     def sync(s):
         s.send_cmd(struct.pack('B', s.SYNC))
         s.wait_ack()
+
     def ping(s):
         s.send_cmd(struct.pack('B', s.PING))
         return s.read_all(len(s.PONG)) == s.PONG
         #return s.read_all(len(ping_result)) == ping_result
-    def unlock(s, ocd_id, corrupt_sum = False):
+    def unlock(s, ocd_id, corrupt_sum=False):
         s.send_cmd(struct.pack('B', s.UNLOCK))
         status = s.read_all(1)[0]
         # f0: already unlocked
@@ -302,23 +318,29 @@ class ProtoOCD:
         if status != s.ST_UNLOCK_OK:
             print('unlock failed: %x' % (status))
         return status == s.ST_UNLOCK_OK
+
     def read(s, offset, size):
         size8_ = size8(size)
         if size8_ is None: return None
         s.send_cmd(struct.pack('<BHB', s.READ, offset, size8_))
         return s.read_all(size)
+
     def write(s, addr, data):
         size = size8(len(data))
         if size is None: return None
-        s.send_cmd(struct.pack('<BHB%dB' (len(data)), s.WRITE, addr, size, *data))
+        s.send_cmd(
+            struct.pack('<BHB%dB' (len(data)), s.WRITE, addr, size, *data))
         return s.read_all(1)[0] == s.WRITE
+
     def call_f07e0(s):
         s.send_cmd(struct.pack('B', s.EXEC))
         return s.read_all(1)[0] == s.EXEC
-    def leave(s, to_ram = False):
+
+    def leave(s, to_ram=False):
         cmd = s.EXIT_RAM if to_ram else s.EXIT_RETI
         s.send_cmd(struct.pack('B', cmd))
         return s.read_all(1)[0] == cmd
+
 
 class RL78:
     MODE_A_1WIRE = b'\x3a'
@@ -326,12 +348,17 @@ class RL78:
     MODE_OCD = b'\xc5'
     BAUDRATE_INIT = 115200
     BAUDRATE_FAST = 1000000
+
     def __init__(s, gpio_url, uart_port):
         s.reset_ctl = Reset(gpio_url)
-        s.port = serial.Serial(uart_port, baudrate=s.BAUDRATE_INIT, timeout=0, stopbits=2)
+        s.port = serial.Serial(uart_port,
+                               baudrate=s.BAUDRATE_INIT,
+                               timeout=0,
+                               stopbits=2)
         s.a = ProtoA(s.port)
         s.ocd = ProtoOCD(s.port)
         s.mode = None
+
     def reset(s, mode):
         s.mode = mode
         s.port.baudrate = s.BAUDRATE_INIT
@@ -358,6 +385,7 @@ class RL78:
             if not s.ocd.ping(): return False
         return True
 
+
 if __name__ == '__main__':
     rl78 = RL78('ftdi://ftdi:232h/0', 'COM5')
     if not rl78.reset(RL78.MODE_A_1WIRE):
@@ -365,4 +393,4 @@ if __name__ == '__main__':
         exit()
     print('sig', binascii.hexlify(rl78.a.silicon_sig()))
     print('sec', binascii.hexlify(rl78.a.security_get()))
-    code.InteractiveConsole(locals = locals()).interact('Entering shell...')
+    code.InteractiveConsole(locals=locals()).interact('Entering shell...')
