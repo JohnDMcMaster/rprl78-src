@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+"""
+Think
+-GPIO (reset, TOOL0) resets into ROM mode
+-RL78 Starts in 2-wire UART mode
+-2-wire UART command switches to single wire UART
+-TOOL0 GPIO released so can be used for single wire
+
+FTDI UART doesn't seem to support timeout
+So small advantage of using dedicated second UART
+Otherwise consider using just one
+"""
+
 from pyftdi.gpio import GpioController
 import serial
 import pyftdi.serialext
@@ -6,6 +18,9 @@ import time, struct, binascii, code, os
 
 
 def delay(amount):
+    # FIXME
+    # time.sleep(0.1)
+
     now = start = time.perf_counter()
     while True:
         now = time.perf_counter()
@@ -14,8 +29,9 @@ def delay(amount):
 
 
 # For C232HM-DDHSL-0 cable
-# FIXME: TX/RX? I'd guess yellow/green, but GREEN is used by TOOL0
+# RX (other cable?)
 WIRE_ORANGE = 1 << 0
+# TX (other cable?)
 WIRE_YELLOW = 1 << 1
 # TOOL0
 WIRE_GREEN = 1 << 2
@@ -26,38 +42,53 @@ WIRE_PURPLE = 1 << 5
 WIRE_WHITE = 1 << 6
 WIRE_BLUE = 1 << 7
 
+WIRE_TOOL0 = WIRE_GREEN
+WIRE_RESET = WIRE_GRAY
+
 
 class Reset:
     def __init__(self, url):
         # init gpio mode with gray (connected to RESET) and green (TOOL0) as outputs
         self.gpio = GpioController()
-        self.gpio.open_from_url(url, direction=WIRE_GRAY | WIRE_GREEN)
+        # XXX: breaks w/o initial=0...why?
+        self.gpio.open_from_url(url,
+                                direction=WIRE_RESET | WIRE_TOOL0,
+                                initial=0)
 
     def enter_rom(self):
-        self.gpio.set_direction(WIRE_GRAY | WIRE_GREEN)
+        self.gpio.set_direction(pins=WIRE_RESET | WIRE_TOOL0,
+                                direction=WIRE_RESET | WIRE_TOOL0)
         # RESET=0, TOOL0=0
+        time.sleep(0.1)
         self.gpio.write_port(0)
         delay(.04)
         # RESET=1, TOOL0=0
-        self.gpio.write_port(WIRE_GRAY)
+        self.gpio.write_port(WIRE_RESET)
         delay(.001)
         # RESET=1, TOOL0=1
-        self.gpio.write_port(WIRE_GRAY | WIRE_GREEN)
+        self.gpio.write_port(WIRE_RESET | WIRE_TOOL0)
         delay(.01)
         # stop driving TOOL0 (with this ftdi device - another one takes over)
-        self.gpio.set_direction(WIRE_GRAY)
+        self.gpio.set_direction(pins=WIRE_RESET, direction=WIRE_RESET)
 
 
-def read_all(port, size):
+def read_all(port, size, timeout=1.0, verbose=False):
+    tstart = time.time()
     data = b''
+    # port.timeout = 0
     while len(data) < size:
-        data += port.read(size - len(data))
+        if time.time() - tstart > timeout:
+            raise Exception("Timed out")
+        new_bytes = port.read(size - len(data))
+        verbose and len(new_bytes) and print("rx %u bytes" % len(new_bytes))
+        data += new_bytes
     assert len(data) == size
     return data
 
 
 def size8(size):
-    if size <= 0 or size > 0x100: return None
+    if size <= 0 or size > 0x100:
+        return None
     if size == 0x100: size = 0
     return size
 
@@ -159,17 +190,20 @@ class ProtoA:
 
     def silicon_sig(self):
         r = self.send_frame(struct.pack('B', self.COM_SILICON_SIG))
-        if r[0] != self.ST_ACK: return None
+        if r[0] != self.ST_ACK:
+            return None
         return self.recv_frame()
 
     def security_get(self):
         r = self.send_frame(struct.pack('B', self.COM_SEC_GET))
-        if r[0] != self.ST_ACK: return None
+        if r[0] != self.ST_ACK:
+            return None
         return self.recv_frame()
 
     def security_set(self, sec):
         r = self.send_frame(struct.pack('B', self.COM_SEC_SET))
-        if r[0] != self.ST_ACK: return None
+        if r[0] != self.ST_ACK:
+            return None
         return self.send_frame(sec, False)[0] == self.ST_ACK
 
     def verify(self, addr, data):
@@ -177,7 +211,8 @@ class ProtoA:
         SA = pack24(addr)
         EA = pack24(addr + len(data) - 1)
         r = self.send_frame(struct.pack('B', self.COM_VERIFY) + SA + EA)
-        if r[0] != self.ST_ACK: return False
+        if r[0] != self.ST_ACK:
+            return False
         for i in range(0, len(data), 0x100):
             last_data = len(data) - i <= 0x100
             r = self.send_frame(data[i:i + 0x100], False, last_data)
@@ -326,13 +361,15 @@ class ProtoOCD:
 
     def read(self, offset, size):
         size8_ = size8(size)
-        if size8_ is None: return None
+        if size8_ is None:
+            return None
         self.send_cmd(struct.pack('<BHB', self.READ, offset, size8_))
         return self.read_all(size)
 
     def write(self, addr, data):
         size = size8(len(data))
-        if size is None: return None
+        if size is None:
+            return None
         self.send_cmd(
             struct.pack('<BHB%dB' % (len(data)), self.WRITE, addr, size,
                         *data))
@@ -355,29 +392,35 @@ class RL78:
     BAUDRATE_INIT = 115200
     BAUDRATE_FAST = 1000000
 
-    def __init__(self, gpio_url, uart_port=None):
+    def __init__(self, gpio_url, uart_port=None, verbose=False):
+        self.verbose = verbose
         self.reset_ctl = Reset(gpio_url)
-        if 0:
-            self.port = serial.Serial(uart_port,
-                                      baudrate=self.BAUDRATE_INIT,
-                                      timeout=0,
-                                      stopbits=2)
-        if 1:
+        # input("Press Enter to continue...")
+        if not uart_port:
             # Original code used serial.Serial
             # However claiming with pyftdi unbinds kernel device
             self.port = pyftdi.serialext.serial_for_url(
                 gpio_url, baudrate=self.BAUDRATE_INIT, timeout=0, stopbits=2)
+        else:
+            self.port = serial.Serial(uart_port,
+                                      baudrate=self.BAUDRATE_INIT,
+                                      timeout=0,
+                                      stopbits=2)
         self.a = ProtoA(self.port)
         self.ocd = ProtoOCD(self.port)
         self.mode = None
 
     def reset(self, mode):
+        self.verbose and print("Resetting in mode 0x%02X" % mode[0])
         self.mode = mode
         self.port.baudrate = self.BAUDRATE_INIT
+        self.verbose and print("Sending ROM reset")
         self.reset_ctl.enter_rom()
         self.port.write(self.mode)
+        self.verbose and print("Waiting for ack")
         # we'll see the reset as a null byte. discard it and the init byte
         read_all(self.port, 2)
+        self.verbose and print("Got ack")
         # send baudrate cmd (required) & sync
         baudrate = self.BAUDRATE_FAST if self.mode != self.MODE_OCD else self.BAUDRATE_INIT
         rl78_br = {115200: 0, 250000: 1, 500000: 2, 1000000: 3}[baudrate]
@@ -387,14 +430,17 @@ class RL78:
         # feeding with 1.7v uses slower mode, 1.8v and 2.1v are same, slightly faster speed
         r = self.a.set_baudrate(rl78_br, 21)
         self.port.baudrate = baudrate
-        if r[0] != ProtoA.ST_ACK: return False
+        if r[0] != ProtoA.ST_ACK:
+            return False
         delay(.01)
         if self.mode != self.MODE_OCD:
             r = self.a.reset()
-            if r[0] != ProtoA.ST_ACK: return False
+            if r[0] != ProtoA.ST_ACK:
+                return False
         else:
             self.ocd.wait_ack()
-            if not self.ocd.ping(): return False
+            if not self.ocd.ping():
+                return False
         return True
 
 
@@ -404,17 +450,26 @@ def main():
     parser = argparse.ArgumentParser(description='RL78 tool')
     parser.add_argument(
         '--gpio-url',
-        #default='ftdi://ftdi:232h/0',
+        default='ftdi://ftdi:232h/0',
         # Default device
-        default='ftdi:///1',
+        # default='ftdi:///1',
         help='FTDI GPIO URL')
     parser.add_argument('--uart-port', default='COM5', help='FTDI device')
+    parser.add_argument('--verbose', action="store_true")
     args = parser.parse_args()
 
-    rl78 = RL78(gpio_url=args.gpio_url, uart_port=args.uart_port)
-    if not rl78.reset(RL78.MODE_A_1WIRE):
-        print('failed to init a')
+    if 0:
+        print('test')
+        reset_ctl = Reset(args.gpio_url)
+        reset_ctl.enter_rom()
+        print('done')
         return
+
+    rl78 = RL78(gpio_url=args.gpio_url,
+                uart_port=args.uart_port,
+                verbose=args.verbose)
+    if not rl78.reset(RL78.MODE_A_1WIRE):
+        raise Exception('failed to init a')
     print('sig', binascii.hexlify(rl78.a.silicon_sig()))
     print('sec', binascii.hexlify(rl78.a.security_get()))
     code.InteractiveConsole(locals=locals()).interact('Entering shell...')
