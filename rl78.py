@@ -17,6 +17,48 @@ import pyftdi.serialext
 import time, struct, binascii, code, os
 
 
+def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
+    def isprint(c):
+        return c >= ' ' and c <= '~'
+
+    if label:
+        print(label)
+
+    bytes_per_half_row = 8
+    bytes_per_row = 16
+    data = bytearray(data)
+    data_len = len(data)
+
+    def hexdump_half_row(start):
+        left = max(data_len - start, 0)
+
+        real_data = min(bytes_per_half_row, left)
+
+        f.write(''.join('%02X ' % c for c in data[start:start + real_data]))
+        f.write(''.join('   ' * (bytes_per_half_row - real_data)))
+        f.write(' ')
+
+        return start + bytes_per_half_row
+
+    pos = 0
+    while pos < data_len:
+        row_start = pos
+        f.write(indent)
+        if address_width:
+            f.write(('%%0%dX  ' % address_width) % pos)
+        pos = hexdump_half_row(pos)
+        pos = hexdump_half_row(pos)
+        f.write("|")
+        # Char view
+        left = data_len - row_start
+        real_data = min(bytes_per_row, left)
+
+        f.write(''.join([
+            c if isprint(c) else '.'
+            for c in tostr(data[row_start:row_start + real_data])
+        ]))
+        f.write((" " * (bytes_per_row - real_data)) + "|\n")
+
 def delay(amount):
     # FIXME
     # time.sleep(0.1)
@@ -81,6 +123,8 @@ def read_all(port, size, timeout=1.0, verbose=False):
             raise Exception("Timed out")
         new_bytes = port.read(size - len(data))
         verbose and len(new_bytes) and print("rx %u bytes" % len(new_bytes))
+        if new_bytes:
+            hexdump(new_bytes)
         data += new_bytes
     assert len(data) == size
     return data
@@ -128,11 +172,12 @@ class ProtoA:
     ST_BLANK_ERR = 0x1b
     ST_WRITE_ERR = 0x1c
 
-    def __init__(self, port):
+    def __init__(self, port, verbose=False):
         self.port = port
+        self.verbose = verbose
 
     def read_all(self, size):
-        return read_all(self.port, size)
+        return read_all(self.port, size, verbose=self.verbose)
 
     def _checksum(self, data):
         csum = 0
@@ -397,6 +442,7 @@ class RL78:
         self.reset_ctl = Reset(gpio_url)
         # input("Press Enter to continue...")
         if not uart_port:
+            print("Opening as pyftdi...")
             # Original code used serial.Serial
             # However claiming with pyftdi unbinds kernel device
             self.port = pyftdi.serialext.serial_for_url(
@@ -406,7 +452,9 @@ class RL78:
                                       baudrate=self.BAUDRATE_INIT,
                                       timeout=0,
                                       stopbits=2)
-        self.a = ProtoA(self.port)
+        print("Opening ProtoA...")
+        self.a = ProtoA(self.port, verbose=self.verbose)
+        print("Opening OCD...")
         self.ocd = ProtoOCD(self.port)
         self.mode = None
 
@@ -419,7 +467,7 @@ class RL78:
         self.port.write(self.mode)
         self.verbose and print("Waiting for ack")
         # we'll see the reset as a null byte. discard it and the init byte
-        read_all(self.port, 2)
+        read_all(self.port, 2, verbose=self.verbose)
         self.verbose and print("Got ack")
         # send baudrate cmd (required) & sync
         baudrate = self.BAUDRATE_FAST if self.mode != self.MODE_OCD else self.BAUDRATE_INIT
@@ -454,7 +502,7 @@ def main():
         # Default device
         # default='ftdi:///1',
         help='FTDI GPIO URL')
-    parser.add_argument('--uart-port', default='COM5', help='FTDI device')
+    parser.add_argument('--uart-port', default='', help='FTDI device')
     parser.add_argument('--verbose', action="store_true")
     args = parser.parse_args()
 
@@ -465,9 +513,11 @@ def main():
         print('done')
         return
 
+    print("Opening...")
     rl78 = RL78(gpio_url=args.gpio_url,
                 uart_port=args.uart_port,
                 verbose=args.verbose)
+    print("Resetting...")
     if not rl78.reset(RL78.MODE_A_1WIRE):
         raise Exception('failed to init a')
     print('sig', binascii.hexlify(rl78.a.silicon_sig()))
