@@ -550,7 +550,6 @@ def main():
     print('sec', binascii.hexlify(rl78.a.security_get()))
     code.InteractiveConsole(locals=locals()).interact('Entering shell...')
 
-print("test")
 
 if __name__ == "__main__":
     main()
