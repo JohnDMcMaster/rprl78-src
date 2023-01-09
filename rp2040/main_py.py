@@ -194,7 +194,7 @@ def read_all(port, size, timeout=1.0, verbose=False):
             raise Exception("Timed out")
         new_bytes = port.read(size - len(data))
         if new_bytes:
-            verbose and len(new_bytes) and print("rx %u bytes" % len(new_bytes))
+            verbose and len(new_bytes) and print("rx +%u / %u bytes" % (len(new_bytes), size))
             1 and hexdump(new_bytes)
             data += new_bytes
     assert len(data) == size
@@ -548,7 +548,8 @@ class RL78:
 
         self.port = UART(self.uartn, baudrate=self.BAUDRATE_INIT)
         #time.sleep_ms(10)
-        self.port.init(baudrate=self.BAUDRATE_INIT, bits=8, parity=None, stop=2)
+        self.port.init(baudrate=self.BAUDRATE_INIT, bits=8, parity=None, stop=1)
+        self.a.port = self.port
         # time.sleep_ms(20)
 
         """
@@ -557,34 +558,13 @@ class RL78:
         But want 2 bytes (ack)
         
         N/C
-        Sometimes I recieve something, sometimes not
+        Sometimes I receive something, sometimes not
         Hmm shrug we'll see
         """
         print("Writing mode 0x%02X" % self.mode[0])
-        if 0:
-            assert self.port.write(self.mode) == 1
-            # "For the rp2, esp8266 and nrf ports the call returns while the last byte is sent.
-            # If required, a one character wait time has to be added in the calling script."
-            # AttributeError: 'UART' object has no attribute 'flush'
-            #self.port.flush()
-        if 0:
-            print("wrote %s" % self.port.write(b"\x3A\x01\x03\x9A\x02\x21\x40\x03"))
-        if 1:
-            #for i, b in enumerate(bytearray(b"\x3A\x01\x03\x9A\x02\x21\x40\x03")):
-            for i, b in enumerate(bytearray(b"\x3A")):
-                assert self.port.write(bytearray([b])) == 1
-                if i:
-                    time.sleep_us(200)
-                else:
-                    time.sleep_us(300)
-
-        delay(.1)
-        assert 0
-
-        self.verbose and print("Waiting for ack")
-        # we'll see the reset as a null byte. discard it and the init byte
-        read_all(self.port, 2, verbose=self.verbose)
-        self.verbose and print("Got ack")
+        assert self.port.write(self.mode) == 1
+        # works as quick test: send set mode + baudrate write
+        # print("wrote %s" % self.port.write(b"\x3A\x01\x03\x9A\x02\x21\x40\x03"))
 
         # send baudrate cmd (required) & sync
         baudrate = self.BAUDRATE_FAST if self.mode != self.MODE_OCD else self.BAUDRATE_INIT
@@ -594,12 +574,19 @@ class RL78:
         # regulator seems to auto-adjust anyways...
         # feeding with 1.7v uses slower mode, 1.8v and 2.1v are same, slightly faster speed
         r = self.a.set_baudrate(rl78_br, 21)
-        # self.port.baudrate = baudrate
-        self.port.init(baudrate=baudrate, bits=8, parity=None, stop=2)
         if r[0] != ProtoA.ST_ACK:
             return False
-        delay(.01)
+
+        # there are two acks: one for frame SET_BAUDRATE, a second at the new baudrate
+        # however, they are only 2 ms apart and we can't re-initialize the serial port fast enough
+        # Delay to intentionally loose the ack at the new badurate
+        delay(0.01)
+        # From trace, observed to be 8n1, *not* 8n2 as initially claimed
+        self.port.init(baudrate=baudrate, bits=8, parity=None, stop=1)
+        print("Flushing buffer")
+        print("read %u bytes" % len(self.port.read(64)))
         if self.mode != self.MODE_OCD:
+            print("Sending reset")
             r = self.a.reset()
             if r[0] != ProtoA.ST_ACK:
                 return False
@@ -624,3 +611,6 @@ def main():
     finally:
         # rl78.gpio_pwr.off()
         pass
+
+if 0 and  __name__ == '__main__':
+    main()
