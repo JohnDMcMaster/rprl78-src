@@ -83,9 +83,19 @@ import binascii
 import struct
 import sys
 
+gpio_debug1 = Pin(16, Pin.OUT, value=0)
+
 
 def delay(sec):
     time.sleep_ms(int(sec * 1000))
+
+def tostr(buff):
+    if type(buff) is str:
+        return buff
+    elif type(buff) is bytearray or type(buff) is bytes:
+        return ''.join([chr(b) for b in buff])
+    else:
+        assert 0, type(buff)
 
 def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
     def isprint(c):
@@ -93,6 +103,10 @@ def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
 
     if label:
         print(label)
+
+    if data is None:
+        print("%sNone" % indent)
+        return
 
     bytes_per_half_row = 8
     bytes_per_row = 16
@@ -125,9 +139,29 @@ def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
 
         f.write(''.join([
             c if isprint(c) else '.'
-            for c in str(data[row_start:row_start + real_data])
+            for c in tostr(data[row_start:row_start + real_data])
         ]))
         f.write((" " * (bytes_per_row - real_data)) + "|\n")
+
+class DebugUART:
+    def __init__(self, n, baudrate=115200):
+        # Tried to extend class but too special
+        self.uart = UART(n, baudrate)
+        self.verbose = 0
+
+    def init(self, *args, **kwargs):
+        return self.uart.init(*args, **kwargs)
+
+    def write(self, buf):
+        if self.verbose:
+            hexdump(buf, "write() = %u" % len(buf))
+        return self.uart.write(buf)
+
+    def read(self, n=1):
+        ret = self.uart.read(n)
+        if self.verbose:
+            hexdump(ret, "read() = %u" % n)
+        return ret
 
 class Reset:
     def __init__(self, gpio_pwr):
@@ -163,7 +197,12 @@ class Reset:
             # serial open takes a while
             time.sleep_ms(2)
 
+        # Original sequence
+        # Power is always on
         if 0:
+            self.gpio_pwr.high()
+            time.sleep_ms(100)
+
             # RESET=0, TOOL0=0
             self.gpio_reset.off()
             self.gpio_tool0.off()
@@ -546,7 +585,7 @@ class RL78:
         self.verbose and print("Sending ROM reset")
         self.reset_ctl.enter_rom()
 
-        self.port = UART(self.uartn, baudrate=self.BAUDRATE_INIT)
+        self.port = DebugUART(self.uartn, baudrate=self.BAUDRATE_INIT)
         #time.sleep_ms(10)
         self.port.init(baudrate=self.BAUDRATE_INIT, bits=8, parity=None, stop=1)
         self.a.port = self.port
@@ -584,7 +623,8 @@ class RL78:
         # From trace, observed to be 8n1, *not* 8n2 as initially claimed
         self.port.init(baudrate=baudrate, bits=8, parity=None, stop=1)
         print("Flushing buffer")
-        print("read %u bytes" % len(self.port.read(64)))
+        flushed = self.port.read(64) or b""
+        print("read %u bytes" % len(flushed))
         if self.mode != self.MODE_OCD:
             print("Sending reset")
             r = self.a.reset()
@@ -598,7 +638,7 @@ class RL78:
 
 
 def main():
-    verbose = True
+    verbose = False
     print("Opening...")
     rl78 = RL78(verbose=verbose)
     print("Resetting...")
