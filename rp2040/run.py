@@ -2,6 +2,9 @@
 
 from rp2040 import RP2040MP
 
+"""
+
+"""
 
 def main():
     import argparse
@@ -16,7 +19,7 @@ def main():
     # mp.reset()
     if args.load:
         print("loading...")
-        mp.paste(open("main_py.py", "r").read())
+        mp.paste(open("main_rp2040.py", "r").read())
     if args.run:
         mp.paste("\n\n\nmain()")
 

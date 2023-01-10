@@ -205,6 +205,20 @@ def tostr(buff):
         assert 0, type(buff)
 
 
+def tobytes(buff):
+    if type(buff) is str:
+        #return bytearray(buff, 'ascii')
+        return bytearray([ord(c) for c in buff])
+    elif type(buff) is bytearray or type(buff) is bytes:
+        return buff
+    else:
+        assert 0, type(buff)
+
+
+def tohex(buf):
+    b = tobytes(buf)
+    return tostr(binascii.hexlify(b))
+
 def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
     def isprint(c):
         return c >= ' ' and c <= '~'
@@ -543,7 +557,7 @@ class ProtoA:
         frame = struct.pack('B', self.COM_BLANK_CHECK) + SA + EA + D01
         r = self.send_frame(frame)
         if raw:
-            return frame, r
+            return (frame, r)
         else:
             if r[0] not in (self.ST_ACK, self.ST_BLANK_ERR):
                 if r[0] == self.ST_NACK:
@@ -826,7 +840,7 @@ class RL78:
             assert 0, "Bad mode"
 
 
-def decode_sig(buf):
+def decode_sig(buf, hexlify=True):
     """
     RL78/G13
     25.5.5 Description of signature data
@@ -880,6 +894,12 @@ def decode_sig(buf):
         # print("Data flash address hi", ss.get("data_flash_addr_hi_raw"))
         print("FW ver:", ss.get("fw_ver"))
 
+    if hexlify:
+        ss.d["device_code"] = tohex(ss.d["device_code"])
+        ss.d["fw_ver_raw"] = tohex(ss.d["fw_ver_raw"])
+        ss.d["code_flash_addr_hi_raw"] = tohex(ss.d["code_flash_addr_hi_raw"])
+        ss.d["data_flash_addr_hi_raw"] = tohex(ss.d["data_flash_addr_hi_raw"])
+
     return ss
 
 
@@ -908,7 +928,7 @@ def main():
     return rl78
 
 
-def block_blank_checks(rl78, ss):
+def block_blank_checks(rl78, ss, hexlify=True):
     ret = {}
     """
     XXX: verify this is right and then sub into below
@@ -934,23 +954,23 @@ def block_blank_checks(rl78, ss):
         (data_addr_low, data_addr_high),
     ]
     d01 = 0
+    print("Iterating...")
     for addr_min, addr_max in block_addrs:
         for start_addr in range(addr_min, addr_max, block_size):
             raw_tx, raw_st1 = rl78.a.blank_check(start_addr,
                                                  size=block_size,
                                                  d01=d01,
-                                                 raw=False),
+                                                 raw=True)
             jthis = {
                 "raw_tx":
-                raw_tx,
+                tohex(raw_tx),
                 "raw_st1":
-                raw_st1,
+                tohex(raw_st1),
                 "is_blank":
                 rl78.a.blank_check(start_addr, size=block_size, d01=d01),
-                "start_addr":
-                "0x%06X" % start_addr,
+                "start_addr": start_addr,
             }
-            ret[start_addr] = jthis
+            ret["0x%06X" % start_addr] = jthis
     return ret
 
 
@@ -963,19 +983,36 @@ def dump_meta_json():
     sig_raw = rl78.a.silicon_sig()
     sig = decode_sig(sig_raw)
     sec_raw = rl78.a.security_get()
-    bbcs = block_blank_checks(rl78, sig_raw)
+    bbcs = block_blank_checks(rl78, sig)
 
     j = {
-        "silicon_sig": sig,
+        "silicon_sig": sig.d,
         "security_get": {
-            "raw_rx": sec_raw.hex(),
+            "raw_rx": tohex(sec_raw),
         },
         "block_blank_checks": bbcs,
     }
-    j["silicon_sig"]["raw_rx"] = sig_raw
+    j["silicon_sig"]["raw_rx"] = tohex(sig_raw)
     print("")
     print("")
-    print(json.dumps(j, sort_keys=True, indent=4, separators=(",", ": ")))
+    #print(json.dumps(j, sort_keys=True, indent=4, separators=(",", ": ")))
+    # MemoryError: memory allocation failed, allocating 2864 bytes
+    # print(json.dumps(j, separators=(",", ": ")))
+    # print(json.dumps(j))
+    print("saving...")
+    with open("tmp.json", "w") as f:
+        json.dump(j, f)
+    print("loading...")
+    # MemoryError: memory allocation failed, allocating 3072 bytes
+    #with open("tmp.json", "r") as f:
+    #    print(str(f.read()))
+    print("")
+    with open("tmp.json", "r") as f:
+        while True:
+            buf = f.read(32)
+            if not buf:
+                break
+            sys.stdout.write(buf)
     print("")
     print("")
 
