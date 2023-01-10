@@ -2,6 +2,7 @@
 
 from rp2040 import RP2040MP
 
+
 def main():
     import argparse
 
@@ -19,6 +20,6 @@ def main():
     if args.run:
         mp.paste("\n\n\nmain()")
 
+
 if __name__ == "__main__":
     main()
-

@@ -164,7 +164,7 @@ class RP2040MP:
             time.sleep(0.05)
         tend = time.time()
         # Reset after 0.7 sec
-        print("Reset after %0.1f sec" % (tend - tstart,))
+        print("Reset after %0.1f sec" % (tend - tstart, ))
         # time.sleep(0.1)
         self.init()
 
