@@ -73,6 +73,13 @@ upgrading to 1.19 gave init function and other stuff missing
 >>> import machine
 >>> machine.freq() 
 125000000
+
+
+OCD
+it t looks like everything responds to SET_BAUD
+2/3 responded baud w/ ST_ACK, but didn't respond to sync
+(verified on logic analyzer)
+1/3 responded baud w/ ST_PROTECT_ERR
 """
 
 from machine import UART
@@ -219,6 +226,7 @@ def tohex(buf):
     b = tobytes(buf)
     return tostr(binascii.hexlify(b))
 
+
 def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
     def isprint(c):
         return c >= ' ' and c <= '~'
@@ -287,11 +295,33 @@ class DebugUART:
         return ret
 
 
+class SerialTimeout(Exception):
+    pass
+
+
 class Reset:
     def __init__(self, gpio_pwr):
         self.gpio_pwr = gpio_pwr
         self.gpio_reset = None
         self.gpio_tool0 = None
+
+    def power_on(self):
+        resetz = 0
+
+        self.gpio_tool0 = Pin(0, Pin.IN)
+        # self.gpio_tool0 = Pin(0, Pin.OUT, value=1)
+
+        self.gpio_pwr.low()
+        if resetz:
+            self.gpio_reset = Pin(2, Pin.IN)
+        else:
+            self.gpio_reset = Pin(2, Pin.OUT, value=0)
+        time.sleep_ms(100)
+        self.gpio_pwr.high()
+        time.sleep_ms(100)
+        if not resetz:
+            # RESETn => start CPU
+            self.gpio_reset.on()
 
     def enter_rom(self):
         """
@@ -367,7 +397,7 @@ def read_all(port, size, timeout=1.0, verbose=False):
     # port.timeout = 0
     while len(data) < size:
         if time.time() - tstart > timeout:
-            raise Exception("Timed out")
+            raise SerialTimeout("Timed out")
         new_bytes = port.read(size - len(data))
         if new_bytes:
             verbose and len(new_bytes) and print("rx +%u / %u bytes" %
@@ -402,6 +432,18 @@ class ProtoANACK(ProtoAError):
     pass
 
 
+def st1_exception(buf, msg=""):
+    if buf[0] == ProtoA.ST_NACK:
+        raise ProtoANACK(msg)
+    else:
+        s = ProtoA.st_i2s.get(buf[0])
+        if msg:
+            msg = "0x%02X (%s): %s" % (buf[0], s, str(msg))
+        else:
+            msg = "0x%02X (%s)" % (buf[0], s)
+        raise ProtoAError(msg)
+
+
 class ProtoA:
     SOH = 0x01
     STX = 0x02
@@ -420,6 +462,20 @@ class ProtoA:
     COM_SEC_GET = 0xa1
     COM_SEC_RLS = 0xa2
     COM_CHECKSUM = 0xb0
+    cmd_i2s = {
+        COM_RESET: "Reset",
+        COM_19: "CMD19",
+        COM_ERASE: "Erase",
+        COM_PROG: "Program",
+        COM_VERIFY: "Verify",
+        COM_BLANK_CHECK: "Block Blank Check",
+        COM_BAUDRATE_SET: "Baudrate Set",
+        COM_SILICON_SIG: "Silicon Signature",
+        COM_SEC_SET: "Security Set",
+        COM_SEC_GET: "Security Get",
+        COM_SEC_RLS: "Security Release",
+        COM_CHECKSUM: "Checksum",
+    }
 
     ST_COM_NUM_ERR = 0x04
     ST_PARAM_ERR = 0x05
@@ -431,6 +487,18 @@ class ProtoA:
     ST_ERASE_ERR = 0x1a
     ST_BLANK_ERR = 0x1b
     ST_WRITE_ERR = 0x1c
+    st_i2s = {
+        ST_COM_NUM_ERR: "COM_NUM_ERR",
+        ST_PARAM_ERR: "PARAM_ERR",
+        ST_ACK: "ACK",
+        ST_SUM_ERR: "SUM_ERR",
+        ST_VERIFY_ERR: "VERIFY_ERR",
+        ST_PROTECT_ERR: "PROTECT_ERR",
+        ST_NACK: "NACK",
+        ST_ERASE_ERR: "ERASE_ERR",
+        ST_BLANK_ERR: "BLANK_ERR",
+        ST_WRITE_ERR: "WRITE_ERR",
+    }
 
     def __init__(self, port, verbose=False):
         self.port = port
@@ -454,8 +522,12 @@ class ProtoA:
         return csum
 
     def recv_frame(self):
-        while self.port.read() != bytes([self.STX]):
-            pass
+        tstart = time.time()
+        while True:
+            if time.time() - tstart > 0.5:
+                raise SerialTimeout("timed out")
+            if self.port.read() == bytes([self.STX]):
+                break
         len_b = self.port.read()
         LEN = size8(struct.unpack('B', len_b)[0])
         recv_len = LEN + 2
@@ -501,7 +573,7 @@ class ProtoA:
         """
         r = self.send_frame(struct.pack('B', self.COM_SILICON_SIG))
         if r[0] != self.ST_ACK:
-            return None
+            raise st1_exception(r)
         return self.recv_frame()
 
     def security_get(self):
@@ -511,13 +583,13 @@ class ProtoA:
         """
         r = self.send_frame(struct.pack('B', self.COM_SEC_GET))
         if r[0] != self.ST_ACK:
-            return None
+            raise st1_exception(r)
         return self.recv_frame()
 
     def security_set(self, sec):
         r = self.send_frame(struct.pack('B', self.COM_SEC_SET))
         if r[0] != self.ST_ACK:
-            return None
+            raise st1_exception(r)
         return self.send_frame(sec, False)[0] == self.ST_ACK
 
     def verify(self, addr, data):
@@ -526,18 +598,31 @@ class ProtoA:
         EA = pack24(addr + len(data) - 1)
         r = self.send_frame(struct.pack('B', self.COM_VERIFY) + SA + EA)
         if r[0] != self.ST_ACK:
-            return False
+            raise st1_exception(r)
         for i in range(0, len(data), 0x100):
             last_data = len(data) - i <= 0x100
             r = self.send_frame(data[i:i + 0x100], False, last_data)
         return r[0] == self.ST_ACK and r[1] == self.ST_ACK
 
     def checksum(self, addr, size):
-        assert size > 0
+        """
+        addr: if non-0 seems to return "size" instead of an actual checksum
+        size must be aligned or returns nack
+
+        can't get a size less than 0x100 to work
+
+
+        >>> "0x%04X" % rl78.a.checksum(0x000, 0x100)
+        '0x2075'
+        >>> "0x%04X" % rl78.a.checksum(0x100, 0x100)
+        '0x3CD4'
+        """
+        # assert size > 0
         SA = pack24(addr)
         EA = pack24(addr + size - 1)
         r = self.send_frame(struct.pack('B', self.COM_CHECKSUM) + SA + EA)
-        if r[0] != self.ST_ACK: return None
+        if r[0] != self.ST_ACK:
+            raise ProtoANACK()
         return struct.unpack('<H', self.recv_frame())[0]
 
     def blank_check(self, addr, size=0x400, d01=0, raw=False):
@@ -560,10 +645,7 @@ class ProtoA:
             return (frame, r)
         else:
             if r[0] not in (self.ST_ACK, self.ST_BLANK_ERR):
-                if r[0] == self.ST_NACK:
-                    raise ProtoANACK()
-                else:
-                    raise ProtoAError(r[0])
+                raise st1_exception(r)
             # True means it is blank
             return r[0] == self.ST_ACK
 
@@ -593,25 +675,36 @@ class ProtoA:
         return self.send_frame(struct.pack('B', self.COM_19) + SA + EA)
 
     def erase_block(self, addr):
-        return self.send_frame(struct.pack('B', self.COM_ERASE) + pack24(addr))
+        r = self.send_frame(struct.pack('B', self.COM_ERASE) + pack24(addr))
+        if r[0] != self.ST_ACK:
+            raise st1_exception(r)
 
     def program(self, addr, data):
         SA = pack24(addr)
         EA = pack24(addr + len(data) - 1)
         r = self.send_frame(struct.pack('B', self.COM_PROG) + SA + EA)
-        if r[0] != self.ST_ACK: return False
+        if r[0] != self.ST_ACK:
+            raise st1_exception(r)
         for i in range(0, len(data), 0x100):
             last_data = len(data) - i <= 0x100
             r = self.send_frame(data[i:i + 0x100], False, last_data)
-        if r[0] != self.ST_ACK or r[1] != self.ST_ACK:
-            return False
-        # iverify status
-        return self.recv_frame()
+        # Status frame ST1
+        # ST1 (b): Data reception check result
+        if r[0] != self.ST_ACK:
+            raise st1_exception(r, "ST1 data frame")
+        # Status frame ST2
+        # ST2 (b): Write result
+        if r[1] != self.ST_ACK:
+            raise st1_exception(r[1:], "ST2 status frame")
+        # Completion frame
+        r = self.recv_frame()
+        if r[0] != self.ST_ACK:
+            raise st1_exception(r, "completion frame")
 
     def write(self, addr, data):
         # erase block = 0x400, everything else can use 0x100
         if addr % 0x400 or len(data) % 0x400:
-            return False
+            raise ValueError()
         for i in range(0, len(data), 0x400):
             self.erase_block(addr + i)
         # XXX should be able to handle multiple blocks, not sure why it hangs
@@ -619,6 +712,18 @@ class ProtoA:
         for i in range(0, len(data), 0x100):
             self.program(addr + i, data[i:i + 0x100])
         return self.verify(addr, data)
+
+
+"""
+Handshake
+0xC5
+0x01 set baudrate 0x03
+0x02 set baudrate reply 0x03
+0x00
+    SYNC = 0x00
+0x90 0x03 0x03
+    ping
+"""
 
 
 class ProtoOCD:
@@ -666,6 +771,7 @@ class ProtoOCD:
 
     def sync(self):
         self.send_cmd(struct.pack('B', self.SYNC))
+        # fail0verflow code had this, but I don't see anything after SYNC in my tests
         self.wait_ack()
 
     def ping(self):
@@ -674,8 +780,18 @@ class ProtoOCD:
         #return self.read_all(len(ping_result)) == ping_result
 
     def unlock(self, ocd_id, corrupt_sum=False):
-        self.send_cmd(struct.pack('B', self.UNLOCK))
-        status = self.read_all(1)[0]
+        """
+        ocd_id: 10 byte security code
+        Seems like all 0's was default on my dev board
+        """
+        transaction = bytearray()
+
+        def tool0(buf):
+            transaction.extend(buf)
+            return buf
+
+        self.send_cmd(tool0(struct.pack('B', self.UNLOCK)))
+        status = tool0(self.read_all(1))[0]
         # f0: already unlocked
         # f1: need to send
         if status == self.ST_UNLOCK_ALREADY:
@@ -684,11 +800,12 @@ class ProtoOCD:
         if status != self.ST_UNLOCK_LOCKED:
             print('unexpected status')
             return False
+        assert len(ocd_id) == 10
         csum = self.checksum(ocd_id)
         if corrupt_sum:
             csum += 1
             csum &= 0xff
-        self.send_cmd(struct.pack('10BB', *ocd_id, csum))
+        self.send_cmd(tool0(struct.pack('10BB', *ocd_id, csum)))
         status = self.read_all(1)[0]
         # f2: success
         # f3: checksum mismatch
@@ -728,7 +845,10 @@ class RL78:
     MODE_A_2WIRE = b'\x00'
     MODE_OCD = b'\xc5'
     BAUDRATE_INIT = 115200
-    BAUDRATE_FAST = 1000000
+
+    # BAUDRATE_FAST = 1000000
+    # BAUDRATE_FAST = 500000
+    # BAUDRATE_FAST = 250000
     BAUDRATE_FAST = 115200
 
     def __init__(self, verbose=False):
@@ -753,7 +873,7 @@ class RL78:
         self.ocd = ProtoOCD(self.port)
         self.mode = None
 
-    def reset(self, mode, baudup=True):
+    def reset(self, mode, baudup=True, flush=True, probe=True):
         gpio_debug1.low()
         self.verbose and print("Resetting in mode 0x%02X" % mode[0])
         self.mode = mode
@@ -808,6 +928,15 @@ class RL78:
                     raise RenesasError("Reset failed: baud ACK fail w/ %d" %
                                        (r[0], ))
 
+            assert len(r) == 3
+            st1, d01, d02 = r
+            print("Baud rate OK")
+            print("  ST1: 0x%02X" % st1)
+            # OCD: got 0x08
+            print("  D01: 0x%02X (%u MHz)" % (d01, d01))
+            fstr = {0: "full-speed mode", 1: "wide-voltage mode"}[d02]
+            print("  D02: 0x%02X (%s)" % (d02, fstr))
+
             # there are two acks: one for frame SET_BAUDRATE, a second at the new baudrate
             # however, they are only 2 ms apart and we can't re-initialize the serial port fast enough
             # Delay to intentionally loose the ack at the new badurate
@@ -820,24 +949,28 @@ class RL78:
                            stop=1,
                            timeout=500)
 
-        print("reset: flushing buffer")
-        flushed = self.port.read(64) or b""
-        print("reset: flushed %u bytes" % len(flushed))
+        if flush:
+            print("reset: flushing buffer")
+            flushed = self.port.read(64) or b""
+            print("reset: flushed %u bytes" % len(flushed))
 
-        if self.mode in (self.MODE_A_1WIRE, self.MODE_A_2WIRE):
-            print("Sending ProtoA reset")
-            gpio_debug1.high()
-            r = self.a.reset()
-            if r[0] != ProtoA.ST_ACK:
-                raise RenesasError("Reset failed: A NACK")
-            print("ProtoA established")
-        elif self.mode == self.MODE_OCD:
-            print("Sending OCD ping")
-            self.ocd.wait_ack()
-            if not self.ocd.ping():
-                raise RenesasError("Reset failed: OCD failed ping")
-        else:
-            assert 0, "Bad mode"
+        if probe:
+            if self.mode in (self.MODE_A_1WIRE, self.MODE_A_2WIRE):
+                print("Sending ProtoA reset")
+                gpio_debug1.high()
+                r = self.a.reset()
+                if r[0] != ProtoA.ST_ACK:
+                    raise RenesasError("Reset failed: A NACK")
+                print("ProtoA established")
+            elif self.mode == self.MODE_OCD:
+                print("Waiting for ACK / SYNC....")
+                # Should occur 1 ms after baud set
+                # We will probably loose it with uart re-initialization and/or flush above
+                # self.ocd.wait_ack()
+                if not self.ocd.ping():
+                    raise RenesasError("Reset failed: OCD failed ping")
+            else:
+                assert 0, "Bad mode"
 
 
 def decode_sig(buf, hexlify=True):
@@ -968,7 +1101,8 @@ def block_blank_checks(rl78, ss, hexlify=True):
                 tohex(raw_st1),
                 "is_blank":
                 rl78.a.blank_check(start_addr, size=block_size, d01=d01),
-                "start_addr": start_addr,
+                "start_addr":
+                start_addr,
             }
             ret["0x%06X" % start_addr] = jthis
     return ret
@@ -1017,6 +1151,169 @@ def dump_meta_json():
     print("")
 
     return rl78
+
+
+def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
+    """
+    printj => ran out of memory with many things I tried
+
+    ran into memory allocation errors...
+
+    0x000000: 0x5F49
+    0x000400: 0x0400
+    0x000800: 0x0400
+    0x000000: 0x6349
+    """
+    if not rl78:
+        rl78 = try_a()
+    if not ss:
+        ss = decode_sig(rl78.a.silicon_sig())
+
+    print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
+    print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
+    block_size = 0x100
+    block_mask = 0xFFFC00
+    code_addr_low = 0x000000
+    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
+    data_addr_low = 0x0F1000
+    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
+    block_addrs = [
+        (code_addr_low, code_addr_high),
+        (data_addr_low, data_addr_high),
+    ]
+    print("Iterating...")
+    # ret = {}
+    if printj:
+        print("{")
+        print("    \"checksum\": {")
+    #ret = []
+    blanks = 0
+    for addr_min, addr_max in block_addrs:
+        for start_addr in range(addr_min, addr_max, block_size):
+            checksum = rl78.a.checksum(start_addr, block_size)
+            # print("0x%06X: 0x%04X" % (start_addr, checksum))
+            if printj:
+                print(
+                    '        "0x%06X": {"checksum": %u, "address": %u, "size": %u},'
+                    % (start_addr, checksum, start_addr, block_size))
+            else:
+                if omit_blank and checksum == 0x100:
+                    blanks += 1
+                    continue
+                else:
+                    print("0x%06X: 0x%04X" % (start_addr, checksum))
+            # ret["0x%06X" % start_addr] = {"checksum": checksum, "address": start_addr, "size": block_size}
+            # ret["0x%06X" % start_addr] = checksum
+            #ret.append((start_addr, checksum))
+    if printj:
+        print("    }")
+        print("}")
+    if blanks:
+        print("Blank blocks: %u" % blanks)
+
+    # return ret
+
+
+def dump_checksum_bf():
+    """
+    0x000000: 0x5F49
+    0x000400: 0x0400
+    0x000800: 0x0400
+    0x000000: 0x6349
+    """
+    rl78 = try_a()
+    """
+    Can we find hidden memory locations?
+    """
+    for start_addr in range(0, 0x1000000, 0x100):
+        try:
+            checksum = rl78.a.checksum(start_addr, 0x100)
+            print("0x%06X: 0x%04X" % (start_addr, checksum))
+        except ProtoANACK:
+            continue
+
+
+def power_on(rl78=None):
+    """
+    Power on w/o entering debug mode
+    """
+    if rl78 is None:
+        rl78 = RL78(verbose=False)
+    rl78.reset_ctl.power_on()
+    return rl78
+
+
+def power_off(rl78=None):
+    if rl78 is None:
+        rl78 = RL78(verbose=False)
+    return rl78
+
+
+def try_a():
+    print("Opening...")
+    rl78 = RL78(verbose=False)
+    print("Resetting...")
+    rl78.reset(RL78.MODE_A_1WIRE)
+    return rl78
+
+
+def try_ocd():
+    print("Opening...")
+    rl78 = RL78(verbose=False)
+    print("Resetting...")
+    rl78.reset(RL78.MODE_OCD)
+    return rl78
+
+
+def try_simple_codes():
+    # Prefix run with metadata to clearly log if this triggered erase
+    dump_meta_json()
+
+    codes = []
+    codes.append(b"\x00" * 10)
+    codes.append(b"\xFF" * 10)
+    codes.append(bytearray([x for x in range(10)]))
+    codes.append(bytearray([9 - x for x in range(10)]))
+    for x in range(0x100):
+        codes.append(bytearray([x] * 10))
+    for code in codes:
+        print("")
+        print("")
+        print("")
+        rl78 = try_ocd()
+        print("unlocking...")
+        hexdump(code)
+        if rl78.ocd.unlock(code):
+            print("Struck gold!")
+            break
+    else:
+        print("")
+        print("")
+        print("")
+        print("no :(")
+
+
+def find_modes():
+    """
+    0x3A: ok
+    0xC5: ok
+    It did not detect 0x00 b/c requires 2 wire
+    """
+    rl78 = RL78(verbose=False)
+    responses = []
+    for mode in range(0x100):
+        if mode < 0x3A:
+            continue
+        try:
+            rl78.reset(bytearray([mode]), flush=True, probe=False)
+            print("0x%02X: ok" % mode)
+            responses.append(mode)
+        except SerialTimeout:
+            print("0x%02X: timeout" % mode)
+            pass
+    print("")
+    for mode in responses:
+        print("0x%02X: ok" % mode)
 
 
 if 0 and __name__ == '__main__':
