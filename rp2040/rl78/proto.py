@@ -95,6 +95,7 @@ from .util import hexdump
 VERBOSE = 0
 gpio_debug1 = Pin(16, Pin.OUT, value=0)
 
+
 class DebugUART:
     def __init__(self, n, baudrate=115200):
         # Tried to extend class but too special

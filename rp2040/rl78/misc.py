@@ -74,8 +74,10 @@ def block_blank_checks(rl78, ss, hexlify=True, verbose=False):
     Code flash address hi: 0x007FFF
     Data flash address hi: 0x0F1FFF
     """
-    verbose and print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
-    verbose and print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
+    verbose and print("code_flash_addr_hi",
+                      "0x%06X" % ss.get("code_flash_addr_hi"))
+    verbose and print("data_flash_addr_hi",
+                      "0x%06X" % ss.get("data_flash_addr_hi"))
     block_size = 0x400
     block_mask = 0xFFFC00
     code_addr_low = 0x000000
