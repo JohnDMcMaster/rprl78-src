@@ -90,188 +90,11 @@ import binascii
 import struct
 import sys
 import json
+from .util import hexdump
 
 gpio_debug1 = Pin(16, Pin.OUT, value=0)
 
 
-class StructStreamer:
-    def __init__(self, buf, verbose=False):
-        self.buf = bytearray(buf)
-        self.len = len(self.buf)
-        self.d = {}
-        self.verbose = verbose
-
-    def done(self):
-        assert len(self.buf) == 0
-        return self.d
-
-    def popped(self):
-        """Number of bytes consumed so far"""
-        return self.len - len(self.buf)
-
-    def pop_n(self, n):
-        self.verbose and hexdump(self.buf, "pop %u" % n)
-        assert len(
-            self.buf) >= n, "Only %u bytes left, need %u" % (len(self.buf), n)
-        v = self.buf[0:n]
-        # TypeError: 'bytearray' object doesn't support item deletion
-        # del self.buf[0:n]
-        self.buf = self.buf[n:]
-        return v
-
-    def get(self, k):
-        return self.d[k]
-
-    def assert_bytes(self, buf):
-        got = self.pop_n(len(buf))
-        assert got == buf
-
-    def assert_str(self, want):
-        got = self.pop_n(len(want))
-        got = tostr(got)
-        assert want == got, "Wanted %s got %s" % (want, got)
-
-    def bytes(self, k, n):
-        """
-        Add n reserved / unknown bytes
-        """
-        v = self.pop_n(n)
-        self.d[k] = v
-        return v
-
-    def res(self, n):
-        """
-        Add n reserved / unknown bytes
-        """
-        if self.len < 10:
-            k = "res%01u" % self.popped()
-        elif self.len < 100:
-            k = "res%02u" % self.popped()
-        else:
-            k = "res%03u" % self.popped()
-        return bytes(k, n)
-
-    def strn(self, k, n):
-        """
-        pop string of exactly n characters
-        """
-        v = tostr(self.pop_n(n))
-        self.d[k] = v
-        return v
-
-    def strn0(self, k, n):
-        """
-        pop string of exactly n characters, but truncate at first 0, if any
-        """
-        buf = self.pop_n(n)
-        i = buf.find(0)
-        if i >= 0:
-            buf = buf[0:i]
-        v = tostr(buf)
-        self.d[k] = v
-        return v
-
-    def u32b(self, k):
-        v = struct.unpack('>I', self.pop_n(4))[0]
-        self.d[k] = v
-        return v
-
-    def u32l(self, k):
-        v = struct.unpack('<I', self.pop_n(4))[0]
-        self.d[k] = v
-        del self.buf[0:4]
-        return v
-
-    def u16b(self, k):
-        v = struct.unpack('>H', self.pop_n(2))[0]
-        self.d[k] = v
-        return v
-
-    def u16l(self, k):
-        v = struct.unpack('<H', self.pop_n(2))[0]
-        self.d[k] = v
-        return v
-
-    def u8(self, k):
-        v = self.buf[0]
-        self.d[k] = v
-        del self.buf[0:1]
-        return v
-
-
-def delay(sec):
-    time.sleep_ms(int(sec * 1000))
-
-
-def tostr(buff):
-    if type(buff) is str:
-        return buff
-    elif type(buff) is bytearray or type(buff) is bytes:
-        return ''.join([chr(b) for b in buff])
-    else:
-        assert 0, type(buff)
-
-
-def tobytes(buff):
-    if type(buff) is str:
-        #return bytearray(buff, 'ascii')
-        return bytearray([ord(c) for c in buff])
-    elif type(buff) is bytearray or type(buff) is bytes:
-        return buff
-    else:
-        assert 0, type(buff)
-
-
-def tohex(buf):
-    b = tobytes(buf)
-    return tostr(binascii.hexlify(b))
-
-
-def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
-    def isprint(c):
-        return c >= ' ' and c <= '~'
-
-    if label:
-        print(label)
-
-    if data is None:
-        print("%sNone" % indent)
-        return
-
-    bytes_per_half_row = 8
-    bytes_per_row = 16
-    data = bytearray(data)
-    data_len = len(data)
-
-    def hexdump_half_row(start):
-        left = max(data_len - start, 0)
-
-        real_data = min(bytes_per_half_row, left)
-
-        f.write(''.join('%02X ' % c for c in data[start:start + real_data]))
-        f.write(''.join('   ' * (bytes_per_half_row - real_data)))
-        f.write(' ')
-
-        return start + bytes_per_half_row
-
-    pos = 0
-    while pos < data_len:
-        row_start = pos
-        f.write(indent)
-        if address_width:
-            f.write(('%%0%dX  ' % address_width) % pos)
-        pos = hexdump_half_row(pos)
-        pos = hexdump_half_row(pos)
-        f.write("|")
-        # Char view
-        left = data_len - row_start
-        real_data = min(bytes_per_row, left)
-
-        f.write(''.join([
-            c if isprint(c) else '.'
-            for c in tostr(data[row_start:row_start + real_data])
-        ]))
-        f.write((" " * (bytes_per_row - real_data)) + "|\n")
 
 
 class DebugUART:
@@ -322,6 +145,9 @@ class Reset:
         if not resetz:
             # RESETn => start CPU
             self.gpio_reset.on()
+
+    def power_off(self):
+        self.gpio_pwr.low()
 
     def enter_rom(self):
         """
@@ -423,6 +249,9 @@ def pack24(x):
 class RenesasError(Exception):
     pass
 
+
+class ProtectError(RenesasError):
+    pass
 
 class ProtoAError(RenesasError):
     pass
@@ -800,6 +629,8 @@ class ProtoOCD:
         if status != self.ST_UNLOCK_LOCKED:
             print('unexpected status')
             return False
+        if ocd_id is None:
+            raise ProtectError("Aborting on locked + null OCD id")
         assert len(ocd_id) == 10
         csum = self.checksum(ocd_id)
         if corrupt_sum:
@@ -922,7 +753,7 @@ class RL78:
             print("checking result")
             if r[0] != ProtoA.ST_ACK:
                 if r[0] == ProtoA.ST_PROTECT_ERR:
-                    raise RenesasError(
+                    raise ProtectError(
                         "Reset failed: baud ACK fail w/ PROTECT_ERR")
                 else:
                     raise RenesasError("Reset failed: baud ACK fail w/ %d" %
@@ -940,7 +771,7 @@ class RL78:
             # there are two acks: one for frame SET_BAUDRATE, a second at the new baudrate
             # however, they are only 2 ms apart and we can't re-initialize the serial port fast enough
             # Delay to intentionally loose the ack at the new badurate
-            delay(0.01)
+            time.sleep_ms(10)
             print("re-initializing port")
             # From trace, observed to be 8n1, *not* 8n2 as initially claimed
             self.port.init(baudrate=baudrate,
@@ -973,266 +804,6 @@ class RL78:
                 assert 0, "Bad mode"
 
 
-def decode_sig(buf, hexlify=True):
-    """
-    RL78/G13
-    25.5.5 Description of signature data
-    Table 25-9. Signature Data List
-
-    Device code
-    3 bytes
-    The serial number assigned to the device
-    
-    Device name
-    10 bytes
-    Device name (ASCII code)
-
-    Code flash memory area last address
-    3 bytes
-    Last address of code flash memory area
-    (Sent from lower address.
-    Example. 00000H to 0FFFFH (64 KB) => FFH, 1FH, 00H)
-
-    Data flash memory area last address
-    3 bytes
-    Last address of data flash memory area
-    (Sent from lower address.
-    Example. F1000H to F1FFFH (4 KB) => FFH, 1FH, 0FH)
-
-    Firmware version
-    3 bytes
-    Version information of firmware for programming
-    (Sent from upper address.
-    Example. From Ver. 1.23 => 01H, 02H, 03H)
-    """
-    assert len(buf) == 22
-    ss = StructStreamer(buf, verbose=0)
-    ss.bytes("device_code", 3)
-    ss.strn("device_name", 10)
-    # Example. 00000H to 0FFFFH (64 KB) => FFH, 1FH, 00H)
-    v = ss.bytes("code_flash_addr_hi_raw", 3)
-    ss.d["code_flash_addr_hi"] = (v[2] << 16 | v[1] << 8 | v[0])
-    # Example. F1000H to F1FFFH (4 KB) => FFH, 1FH, 0FH)
-    v = ss.bytes("data_flash_addr_hi_raw", 3)
-    ss.d["data_flash_addr_hi"] = (v[2] << 16 | v[1] << 8 | v[0])
-    v = ss.bytes("fw_ver_raw", 3)
-    ss.d["fw_ver"] = "%u.%u%u" % (v[0], v[1], v[2])
-
-    if 1:
-        print("Device code:", ss.get("device_code"))
-        print("Device name:", ss.get("device_name"))
-        print("Code flash address hi: 0x%06X" % ss.get("code_flash_addr_hi"))
-        print("Data flash address hi: 0x%06X" % ss.get("data_flash_addr_hi"))
-        # print("Data flash address hi", ss.get("data_flash_addr_hi_raw"))
-        # print("Data flash address hi", ss.get("data_flash_addr_hi_raw"))
-        print("FW ver:", ss.get("fw_ver"))
-
-    if hexlify:
-        ss.d["device_code"] = tohex(ss.d["device_code"])
-        ss.d["fw_ver_raw"] = tohex(ss.d["fw_ver_raw"])
-        ss.d["code_flash_addr_hi_raw"] = tohex(ss.d["code_flash_addr_hi_raw"])
-        ss.d["data_flash_addr_hi_raw"] = tohex(ss.d["data_flash_addr_hi_raw"])
-
-    return ss
-
-
-def test1_a_info(rl78):
-    print("")
-    sig = rl78.a.silicon_sig()
-    hexdump(sig, "sig")
-    print(binascii.hexlify(sig))
-    decode_sig(sig)
-    print("")
-    sec = rl78.a.security_get()
-    hexdump(sec, "sec")
-    print(binascii.hexlify(sec))
-    # code.InteractiveConsole(locals=locals()).interact('Entering shell...')
-    print("")
-    print("")
-
-
-def main():
-    gpio_debug1.low()
-    verbose = False
-    print("Opening...")
-    rl78 = RL78(verbose=verbose)
-    print("Resetting...")
-    rl78.reset(RL78.MODE_A_1WIRE)
-    return rl78
-
-
-def block_blank_checks(rl78, ss, hexlify=True):
-    ret = {}
-    """
-    XXX: verify this is right and then sub into below
-    Code flash address hi: 0x007FFF
-    Data flash address hi: 0x0F1FFF
-    """
-    print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
-    print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
-    block_size = 0x400
-    block_mask = 0xFFFC00
-    code_addr_low = 0x000000
-    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
-    data_addr_low = 0x0F1000
-    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
-    """
-    block_addrs = [
-        (0x000000, 0x007C00),
-        (0x0F1000, 0x0F1C00),
-        ]
-    """
-    block_addrs = [
-        (code_addr_low, code_addr_high),
-        (data_addr_low, data_addr_high),
-    ]
-    d01 = 0
-    print("Iterating...")
-    for addr_min, addr_max in block_addrs:
-        for start_addr in range(addr_min, addr_max, block_size):
-            raw_tx, raw_st1 = rl78.a.blank_check(start_addr,
-                                                 size=block_size,
-                                                 d01=d01,
-                                                 raw=True)
-            jthis = {
-                "raw_tx":
-                tohex(raw_tx),
-                "raw_st1":
-                tohex(raw_st1),
-                "is_blank":
-                rl78.a.blank_check(start_addr, size=block_size, d01=d01),
-                "start_addr":
-                start_addr,
-            }
-            ret["0x%06X" % start_addr] = jthis
-    return ret
-
-
-def dump_meta_json():
-    print("Opening...")
-    rl78 = RL78(verbose=False)
-    print("Resetting...")
-    rl78.reset(RL78.MODE_A_1WIRE)
-
-    sig_raw = rl78.a.silicon_sig()
-    sig = decode_sig(sig_raw)
-    sec_raw = rl78.a.security_get()
-    bbcs = block_blank_checks(rl78, sig)
-
-    j = {
-        "silicon_sig": sig.d,
-        "security_get": {
-            "raw_rx": tohex(sec_raw),
-        },
-        "block_blank_checks": bbcs,
-    }
-    j["silicon_sig"]["raw_rx"] = tohex(sig_raw)
-    print("")
-    print("")
-    #print(json.dumps(j, sort_keys=True, indent=4, separators=(",", ": ")))
-    # MemoryError: memory allocation failed, allocating 2864 bytes
-    # print(json.dumps(j, separators=(",", ": ")))
-    # print(json.dumps(j))
-    print("saving...")
-    with open("tmp.json", "w") as f:
-        json.dump(j, f)
-    print("loading...")
-    # MemoryError: memory allocation failed, allocating 3072 bytes
-    #with open("tmp.json", "r") as f:
-    #    print(str(f.read()))
-    print("")
-    with open("tmp.json", "r") as f:
-        while True:
-            buf = f.read(32)
-            if not buf:
-                break
-            sys.stdout.write(buf)
-    print("")
-    print("")
-
-    return rl78
-
-
-def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
-    """
-    printj => ran out of memory with many things I tried
-
-    ran into memory allocation errors...
-
-    0x000000: 0x5F49
-    0x000400: 0x0400
-    0x000800: 0x0400
-    0x000000: 0x6349
-    """
-    if not rl78:
-        rl78 = try_a()
-    if not ss:
-        ss = decode_sig(rl78.a.silicon_sig())
-
-    print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
-    print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
-    block_size = 0x100
-    block_mask = 0xFFFC00
-    code_addr_low = 0x000000
-    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
-    data_addr_low = 0x0F1000
-    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
-    block_addrs = [
-        (code_addr_low, code_addr_high),
-        (data_addr_low, data_addr_high),
-    ]
-    print("Iterating...")
-    # ret = {}
-    if printj:
-        print("{")
-        print("    \"checksum\": {")
-    #ret = []
-    blanks = 0
-    for addr_min, addr_max in block_addrs:
-        for start_addr in range(addr_min, addr_max, block_size):
-            checksum = rl78.a.checksum(start_addr, block_size)
-            # print("0x%06X: 0x%04X" % (start_addr, checksum))
-            if printj:
-                print(
-                    '        "0x%06X": {"checksum": %u, "address": %u, "size": %u},'
-                    % (start_addr, checksum, start_addr, block_size))
-            else:
-                if omit_blank and checksum == 0x100:
-                    blanks += 1
-                    continue
-                else:
-                    print("0x%06X: 0x%04X" % (start_addr, checksum))
-            # ret["0x%06X" % start_addr] = {"checksum": checksum, "address": start_addr, "size": block_size}
-            # ret["0x%06X" % start_addr] = checksum
-            #ret.append((start_addr, checksum))
-    if printj:
-        print("    }")
-        print("}")
-    if blanks:
-        print("Blank blocks: %u" % blanks)
-
-    # return ret
-
-
-def dump_checksum_bf():
-    """
-    0x000000: 0x5F49
-    0x000400: 0x0400
-    0x000800: 0x0400
-    0x000000: 0x6349
-    """
-    rl78 = try_a()
-    """
-    Can we find hidden memory locations?
-    """
-    for start_addr in range(0, 0x1000000, 0x100):
-        try:
-            checksum = rl78.a.checksum(start_addr, 0x100)
-            print("0x%06X: 0x%04X" % (start_addr, checksum))
-        except ProtoANACK:
-            continue
-
-
 def power_on(rl78=None):
     """
     Power on w/o entering debug mode
@@ -1246,75 +817,23 @@ def power_on(rl78=None):
 def power_off(rl78=None):
     if rl78 is None:
         rl78 = RL78(verbose=False)
+    rl78.reset_ctl.power_off()
     return rl78
 
 
-def try_a():
-    print("Opening...")
-    rl78 = RL78(verbose=False)
+def try_a1(rl78=None):
+    if not rl78:
+        print("Opening...")
+        rl78 = RL78(verbose=False)
     print("Resetting...")
     rl78.reset(RL78.MODE_A_1WIRE)
     return rl78
 
 
-def try_ocd():
-    print("Opening...")
-    rl78 = RL78(verbose=False)
+def try_ocd(rl78=None):
+    if not rl78:
+        print("Opening...")
+        rl78 = RL78(verbose=False)
     print("Resetting...")
     rl78.reset(RL78.MODE_OCD)
     return rl78
-
-
-def try_simple_codes():
-    # Prefix run with metadata to clearly log if this triggered erase
-    dump_meta_json()
-
-    codes = []
-    codes.append(b"\x00" * 10)
-    codes.append(b"\xFF" * 10)
-    codes.append(bytearray([x for x in range(10)]))
-    codes.append(bytearray([9 - x for x in range(10)]))
-    for x in range(0x100):
-        codes.append(bytearray([x] * 10))
-    for code in codes:
-        print("")
-        print("")
-        print("")
-        rl78 = try_ocd()
-        print("unlocking...")
-        hexdump(code)
-        if rl78.ocd.unlock(code):
-            print("Struck gold!")
-            break
-    else:
-        print("")
-        print("")
-        print("")
-        print("no :(")
-
-
-def find_modes():
-    """
-    0x3A: ok
-    0xC5: ok
-    It did not detect 0x00 b/c requires 2 wire
-    """
-    rl78 = RL78(verbose=False)
-    responses = []
-    for mode in range(0x100):
-        if mode < 0x3A:
-            continue
-        try:
-            rl78.reset(bytearray([mode]), flush=True, probe=False)
-            print("0x%02X: ok" % mode)
-            responses.append(mode)
-        except SerialTimeout:
-            print("0x%02X: timeout" % mode)
-            pass
-    print("")
-    for mode in responses:
-        print("0x%02X: ok" % mode)
-
-
-if 0 and __name__ == '__main__':
-    rl78 = main()
