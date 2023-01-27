@@ -1,5 +1,6 @@
 from rl78.proto import RL78, SerialTimeout
 
+
 def main():
     """
     0x3A: ok

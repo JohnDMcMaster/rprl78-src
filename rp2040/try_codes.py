@@ -2,6 +2,7 @@ from rl78.misc import dump_meta_json
 from rl78.util import hexdump
 from rl78.proto import try_ocd
 
+
 def main():
     # Prefix run with metadata to clearly log if this triggered erase
     dump_meta_json()
@@ -28,6 +29,7 @@ def main():
         print("")
         print("")
         print("no :(")
+
 
 if 0 or __name__ == "__main__":
     main()

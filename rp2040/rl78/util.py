@@ -4,6 +4,7 @@ import sys
 import json
 import os
 
+
 class StructStreamer:
     def __init__(self, buf, verbose=False):
         self.buf = bytearray(buf)
@@ -183,6 +184,7 @@ def hexdump(data, label=None, indent='', address_width=8, f=sys.stdout):
         ]))
         f.write((" " * (bytes_per_row - real_data)) + "|\n")
 
+
 def print_json_pretty(j):
     #print(json.dumps(j, sort_keys=True, indent=4, separators=(",", ": ")))
     # MemoryError: memory allocation failed, allocating 2864 bytes
@@ -202,6 +204,7 @@ def print_json_pretty(j):
     print("")
     os.unlink("tmp.json")
 
+
 def print_json_line(j):
     with open("tmp.json", "w") as f:
         json.dump(j, f)
@@ -216,4 +219,3 @@ def print_json_line(j):
             sys.stdout.write(buf)
     print("")
     os.unlink("tmp.json")
-

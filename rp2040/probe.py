@@ -3,6 +3,7 @@ Try to gather as much info as possible
 """
 from rl78.misc import probe
 
+
 def main():
     probe()
 

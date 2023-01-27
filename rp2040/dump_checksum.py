@@ -1,5 +1,6 @@
 from rl78.misc import dump_checksum
 
+
 def main():
     dump_checksum()
 

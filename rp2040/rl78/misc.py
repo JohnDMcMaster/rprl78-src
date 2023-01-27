@@ -3,6 +3,7 @@ from .proto import try_a1, try_ocd, ProtoANACK, ProtectError
 import json
 import sys
 
+
 def decode_sig(buf, hexlify=True):
     """
     RL78/G13
@@ -64,6 +65,7 @@ def decode_sig(buf, hexlify=True):
         ss.d["data_flash_addr_hi_raw"] = tohex(ss.d["data_flash_addr_hi_raw"])
 
     return ss
+
 
 def block_blank_checks(rl78, ss, hexlify=True):
     ret = {}
@@ -217,9 +219,9 @@ def dump_checksum_bf():
         except ProtoANACK:
             continue
 
+
 def probe_ocd(rl78=None, aggressive=False):
-    j = {
-        }
+    j = {}
 
     try:
         try_ocd(rl78=rl78)
@@ -233,7 +235,6 @@ def probe_ocd(rl78=None, aggressive=False):
     if ocd_locked:
         print_json_pretty(j)
         return
-
     """
     I believe its fairly safe to check if a password is required
     Note that default 0 password was set on my project

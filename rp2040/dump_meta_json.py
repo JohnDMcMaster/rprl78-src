@@ -1,5 +1,6 @@
 from rl78.misc import dump_meta_json
 
+
 def main():
     dump_meta_json()
 
