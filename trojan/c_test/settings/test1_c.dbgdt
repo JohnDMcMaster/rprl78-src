@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+
+<Project>
+  <Desktop>
+    <Static>
+      <Debug-Log>
+        
+        
+      <ColumnWidth0>20</ColumnWidth0><ColumnWidth1>3764</ColumnWidth1></Debug-Log>
+      <Build>
+        <ColumnWidth0>20</ColumnWidth0>
+        <ColumnWidth1>2823</ColumnWidth1>
+        <ColumnWidth2>752</ColumnWidth2>
+        <ColumnWidth3>188</ColumnWidth3>
+      </Build>
+      <Workspace>
+        <ColumnWidths>
+          
+          
+          
+          
+        <Column0>799</Column0><Column1>49</Column1><Column2>27</Column2><Column3>0</Column3></ColumnWidths>
+      </Workspace>
+      <Disassembly>
+        
+        
+        
+      <MixedMode>1</MixedMode><CodeCovShow>1</CodeCovShow><InstrProfShow>1</InstrProfShow></Disassembly>
+    </Static>
+    <Windows>
+      
+      
+      
+    <Wnd0>
+        <Tabs>
+          <Tab>
+            <Identity>TabID-18128-31294</Identity>
+            <TabName>Debug Log</TabName>
+            <Factory>Debug-Log</Factory>
+            <Session/>
+          </Tab>
+          <Tab>
+            <Identity>TabID-17605-31304</Identity>
+            <TabName>Build</TabName>
+            <Factory>Build</Factory>
+            <Session/>
+          </Tab>
+        </Tabs>
+        
+      <SelectedTab>0</SelectedTab></Wnd0><Wnd1>
+        <Tabs>
+          <Tab>
+            <Identity>TabID-28876-31297</Identity>
+            <TabName>Workspace</TabName>
+            <Factory>Workspace</Factory>
+            <Session>
+              
+            <NodeDict><ExpandedNode>test1_c</ExpandedNode></NodeDict></Session>
+          </Tab>
+        </Tabs>
+        
+      <SelectedTab>0</SelectedTab></Wnd1><Wnd2>
+        <Tabs>
+          <Tab>
+            <Identity>TabID-6857-31301</Identity>
+            <TabName>Disassembly</TabName>
+            <Factory>Disassembly</Factory>
+            <Session/>
+          </Tab>
+        </Tabs>
+        
+      <SelectedTab>0</SelectedTab></Wnd2></Windows>
+    <Editor>
+      
+      
+      
+      
+    <Pane><Tab><Factory>TextEditor</Factory><Filename>$WS_DIR$\test2_asm\asmmain.s87</Filename><XPos>0</XPos><YPos>150</YPos><SelStart>3732</SelStart><SelEnd>3732</SelEnd></Tab><Tab><Factory>TextEditor</Factory><Filename>$WS_DIR$\test6_asm\asmmain.s87</Filename><XPos>0</XPos><YPos>0</YPos><SelStart>296</SelStart><SelEnd>296</SelEnd></Tab><Tab><Factory>TextEditor</Factory><Filename>$WS_DIR$\test1_c\main.c</Filename><XPos>0</XPos><YPos>32</YPos><SelStart>920</SelStart><SelEnd>920</SelEnd></Tab><ActiveTab>2</ActiveTab></Pane><ActivePane>0</ActivePane><Sizes><Pane><X>1000000</X><Y>1000000</Y></Pane></Sizes><SplitMode>1</SplitMode></Editor>
+    <Positions>
+      
+      
+      
+      
+      
+    <Top><Row0><Sizes><Toolbar-010672f8><key>iaridepm.enu1</key></Toolbar-010672f8></Sizes></Row0><Row1><Sizes><Toolbar-010f3e90><key>debuggergui.enu1</key></Toolbar-010f3e90></Sizes></Row1><Row2><Sizes><Toolbar-010f4340><key>rl78ocd.enu1</key></Toolbar-010f4340></Sizes></Row2></Top><Left><Row0><Sizes><Wnd1><Rect><Top>-2</Top><Left>-2</Left><Bottom>1703</Bottom><Right>895</Right><x>-2</x><y>-2</y><xscreen>200</xscreen><yscreen>200</yscreen><sizeHorzCX>52083</sizeHorzCX><sizeHorzCY>99701</sizeHorzCY><sizeVertCX>233594</sizeVertCX><sizeVertCY>849950</sizeVertCY></Rect></Wnd1></Sizes></Row0></Left><Right><Row0><Sizes><Wnd2><Rect><Top>-2</Top><Left>-2</Left><Bottom>1703</Bottom><Right>198</Right><x>-2</x><y>-2</y><xscreen>200</xscreen><yscreen>200</yscreen><sizeHorzCX>52083</sizeHorzCX><sizeHorzCY>99701</sizeHorzCY><sizeVertCX>52083</sizeVertCX><sizeVertCY>849950</sizeVertCY></Rect></Wnd2></Sizes></Row0></Right><Bottom><Row0><Sizes><Wnd0><Rect><Top>-2</Top><Left>-2</Left><Bottom>198</Bottom><Right>3842</Right><x>-2</x><y>-2</y><xscreen>3844</xscreen><yscreen>200</yscreen><sizeHorzCX>1001042</sizeHorzCX><sizeHorzCY>99701</sizeHorzCY><sizeVertCX>52083</sizeVertCX><sizeVertCY>99701</sizeVertCY></Rect></Wnd0></Sizes></Row0></Bottom><Float><Sizes/></Float></Positions>
+  </Desktop>
+</Project>
+
+
