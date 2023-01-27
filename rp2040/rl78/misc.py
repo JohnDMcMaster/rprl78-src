@@ -4,7 +4,7 @@ import json
 import sys
 
 
-def decode_sig(buf, hexlify=True):
+def decode_sig(buf, hexlify=True, verbose=False):
     """
     RL78/G13
     25.5.5 Description of signature data
@@ -49,7 +49,7 @@ def decode_sig(buf, hexlify=True):
     v = ss.bytes("fw_ver_raw", 3)
     ss.d["fw_ver"] = "%u.%u%u" % (v[0], v[1], v[2])
 
-    if 1:
+    if verbose:
         print("Device code:", ss.get("device_code"))
         print("Device name:", ss.get("device_name"))
         print("Code flash address hi: 0x%06X" % ss.get("code_flash_addr_hi"))
@@ -67,15 +67,15 @@ def decode_sig(buf, hexlify=True):
     return ss
 
 
-def block_blank_checks(rl78, ss, hexlify=True):
+def block_blank_checks(rl78, ss, hexlify=True, verbose=False):
     ret = {}
     """
     XXX: verify this is right and then sub into below
     Code flash address hi: 0x007FFF
     Data flash address hi: 0x0F1FFF
     """
-    print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
-    print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
+    verbose and print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
+    verbose and print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
     block_size = 0x400
     block_mask = 0xFFFC00
     code_addr_low = 0x000000
@@ -93,7 +93,7 @@ def block_blank_checks(rl78, ss, hexlify=True):
         (data_addr_low, data_addr_high),
     ]
     d01 = 0
-    print("Iterating...")
+    verbose and print("Iterating...")
     for addr_min, addr_max in block_addrs:
         for start_addr in range(addr_min, addr_max, block_size):
             raw_tx, raw_st1 = rl78.a.blank_check(start_addr,
@@ -153,8 +153,9 @@ def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
     if not ss:
         ss = decode_sig(rl78.a.silicon_sig())
 
-    print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
-    print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
+    if not printj:
+        print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
+        print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
     block_size = 0x100
     block_mask = 0xFFFC00
     code_addr_low = 0x000000
@@ -165,11 +166,12 @@ def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
         (code_addr_low, code_addr_high),
         (data_addr_low, data_addr_high),
     ]
-    print("Iterating...")
     # ret = {}
     if printj:
         print("{")
         print("    \"checksum\": {")
+    else:
+        print("Iterating...")
     #ret = []
     blanks = 0
     for addr_min, addr_max in block_addrs:
@@ -192,7 +194,7 @@ def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
     if printj:
         print("    }")
         print("}")
-    if blanks:
+    else:
         print("Blank blocks: %u" % blanks)
 
     # return ret
@@ -220,20 +222,22 @@ def dump_checksum_bf():
             continue
 
 
-def probe_ocd(rl78=None, aggressive=False):
+def probe_ocd(rl78=None, aggressive=False, printj=False):
     j = {}
 
     try:
         try_ocd(rl78=rl78)
-        print("OCD interface locked: no")
+        if not printj:
+            print("OCD interface locked: no")
         ocd_locked = False
     except ProtectError:
-        print("OCD interface locked: yes")
+        if not printj:
+            print("OCD interface locked: yes")
         ocd_locked = True
 
     j["ocd_locked"] = ocd_locked
     if ocd_locked:
-        print_json_pretty(j)
+        printj and print_json_pretty(j)
         return
     """
     I believe its fairly safe to check if a password is required
@@ -244,23 +248,25 @@ def probe_ocd(rl78=None, aggressive=False):
     """
 
     if not aggressive:
-        print_json_pretty(j)
+        printj and print_json_pretty(j)
         return
 
     # This is probably safe
     try:
         rl78.ocd.unlock(ocd_id=None)
-        print("OCD security ID: no")
+        if not printj:
+            print("OCD security ID: no")
         has_security_id = False
     except ProtectError:
-        print("OCD security ID: yes")
+        if not printj:
+            print("OCD security ID: yes")
         has_security_id = True
 
     j["has_security_id"] = has_security_id
-    print_json_pretty(j)
+    printj and print_json_pretty(j)
 
 
-def probe(rl78=None, aggressive=False, machine=False):
+def probe(rl78=None, aggressive=False, printj=False):
     """
     Try to gather as much info as possible without changing anything
     Ex: can check if OCD can be entered (safe) but don't try the default password
@@ -275,7 +281,7 @@ def probe(rl78=None, aggressive=False, machine=False):
 
     # Vast majority of the info
     # Reads bulk metadata like silicon sig and security info
-    if machine:
+    if printj:
         print("<dump_meta_json()>")
         dump_meta_json(rl78=rl78)
         print("</dump_meta_json()>")
@@ -285,7 +291,7 @@ def probe(rl78=None, aggressive=False, machine=False):
 
     print("")
 
-    if machine:
+    if printj:
         print("<dump_checksum()>")
         dump_checksum(rl78=rl78, printj=True)
         print("</dump_checksum()>")
@@ -294,13 +300,14 @@ def probe(rl78=None, aggressive=False, machine=False):
         dump_checksum(rl78=rl78, omit_blank=True)
 
     print("")
-    if machine:
+
+    if printj:
         print("<probe_ocd()>")
-        probe_ocd(rl78=rl78, aggressive=aggressive)
+        probe_ocd(rl78=rl78, aggressive=aggressive, printj=printj)
         print("</probe_ocd()>")
     else:
         print("probe_ocd()")
-        probe_ocd(rl78=rl78, aggressive=aggressive)
+        probe_ocd(rl78=rl78, aggressive=aggressive, printj=printj)
 
     # Most things expect a1 protocol
     try_a1(rl78=rl78)

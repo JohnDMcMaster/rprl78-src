@@ -92,8 +92,8 @@ import sys
 import json
 from .util import hexdump
 
+VERBOSE = 0
 gpio_debug1 = Pin(16, Pin.OUT, value=0)
-
 
 class DebugUART:
     def __init__(self, n, baudrate=115200):
@@ -681,10 +681,12 @@ class RL78:
     # BAUDRATE_FAST = 250000
     BAUDRATE_FAST = 115200
 
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=None):
+        if verbose is None:
+            verbose = VERBOSE
         self.verbose = verbose
         self.uartn = 0
-        print("Opening reset controller...")
+        self.verbose and print("Opening reset controller...")
         self.gpio_pwr = Pin(3, Pin.OUT, value=0)
         self.reset_ctl = Reset(self.gpio_pwr)
         # input("Press Enter to continue...")
@@ -697,9 +699,9 @@ class RL78:
         """
         self.port = None
 
-        print("Opening ProtoA...")
+        # These are command factories,
+        # just creating them doesn't send anything
         self.a = ProtoA(self.port, verbose=self.verbose)
-        print("Opening OCD...")
         self.ocd = ProtoOCD(self.port)
         self.mode = None
 
@@ -730,9 +732,9 @@ class RL78:
         Sometimes I receive something, sometimes not
         Hmm shrug we'll see
         """
-        print("reset: writing mode 0x%02X" % self.mode[0])
+        self.verbose and print("reset: writing mode 0x%02X" % self.mode[0])
         assert self.port.write(self.mode) == 1
-        print("wrote mode")
+        self.verbose and print("wrote mode")
         # works as quick test: send set mode + baudrate write
         # print("wrote %s" % self.port.write(b"\x3A\x01\x03\x9A\x02\x21\x40\x03"))
 
@@ -747,9 +749,9 @@ class RL78:
             # really just sets internal voltage regulator to output 1.7, 1.8 or 2.1 volts
             # regulator seems to auto-adjust anyways...
             # feeding with 1.7v uses slower mode, 1.8v and 2.1v are same, slightly faster speed
-            print("setting baudrate")
+            self.verbose and print("setting baudrate")
             r = self.a.set_baudrate(rl78_br, 21)
-            print("checking result")
+            self.verbose and print("checking result")
             if r[0] != ProtoA.ST_ACK:
                 if r[0] == ProtoA.ST_PROTECT_ERR:
                     raise ProtectError(
@@ -760,18 +762,18 @@ class RL78:
 
             assert len(r) == 3
             st1, d01, d02 = r
-            print("Baud rate OK")
-            print("  ST1: 0x%02X" % st1)
+            self.verbose and print("Baud rate OK")
+            self.verbose and print("  ST1: 0x%02X" % st1)
             # OCD: got 0x08
-            print("  D01: 0x%02X (%u MHz)" % (d01, d01))
+            self.verbose and print("  D01: 0x%02X (%u MHz)" % (d01, d01))
             fstr = {0: "full-speed mode", 1: "wide-voltage mode"}[d02]
-            print("  D02: 0x%02X (%s)" % (d02, fstr))
+            self.verbose and print("  D02: 0x%02X (%s)" % (d02, fstr))
 
             # there are two acks: one for frame SET_BAUDRATE, a second at the new baudrate
             # however, they are only 2 ms apart and we can't re-initialize the serial port fast enough
             # Delay to intentionally loose the ack at the new badurate
             time.sleep_ms(10)
-            print("re-initializing port")
+            self.verbose and print("re-initializing port")
             # From trace, observed to be 8n1, *not* 8n2 as initially claimed
             self.port.init(baudrate=baudrate,
                            bits=8,
@@ -780,20 +782,20 @@ class RL78:
                            timeout=500)
 
         if flush:
-            print("reset: flushing buffer")
+            self.verbose and print("reset: flushing buffer")
             flushed = self.port.read(64) or b""
-            print("reset: flushed %u bytes" % len(flushed))
+            self.verbose and print("reset: flushed %u bytes" % len(flushed))
 
         if probe:
             if self.mode in (self.MODE_A_1WIRE, self.MODE_A_2WIRE):
-                print("Sending ProtoA reset")
+                self.verbose and print("Sending ProtoA reset")
                 gpio_debug1.high()
                 r = self.a.reset()
                 if r[0] != ProtoA.ST_ACK:
                     raise RenesasError("Reset failed: A NACK")
-                print("ProtoA established")
+                self.verbose and print("ProtoA established")
             elif self.mode == self.MODE_OCD:
-                print("Waiting for ACK / SYNC....")
+                self.verbose and print("Waiting for ACK / SYNC....")
                 # Should occur 1 ms after baud set
                 # We will probably loose it with uart re-initialization and/or flush above
                 # self.ocd.wait_ack()
@@ -822,17 +824,17 @@ def power_off(rl78=None):
 
 def try_a1(rl78=None):
     if not rl78:
-        print("Opening...")
+        VERBOSE and print("Opening...")
         rl78 = RL78(verbose=False)
-    print("Resetting...")
+    VERBOSE and print("Resetting...")
     rl78.reset(RL78.MODE_A_1WIRE)
     return rl78
 
 
 def try_ocd(rl78=None):
     if not rl78:
-        print("Opening...")
+        VERBOSE and print("Opening...")
         rl78 = RL78(verbose=False)
-    print("Resetting...")
+    VERBOSE and print("Resetting...")
     rl78.reset(RL78.MODE_OCD)
     return rl78
