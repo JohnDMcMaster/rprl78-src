@@ -16,32 +16,33 @@
         //Not sure how that relates to ASEGN which places reset vector
         ASEGN   RCODE:CODE, 0x0000
         DW      asmmain           ; Reset vector
-        public orig_F07F9
+        public inc_es
         public asmmain
         RSEG    CODE
 
 
         //Ported from C code
-        public delay_ms_loop2
-delay_ms:
+        //Was originally 1 ms, but only on my dev board
+        public delay_short_loop2
+delay_short:
         CMPW      AX, #0x0
         PUSH      DE
         MOVW      DE, #0x0
-        BZ        delay_ms_loop2
-delay_ms_loop0:
+        BZ        delay_short_loop2
+delay_short_loop0:
         MOVW      HL, #0x52D
-delay_ms_loop1:
+delay_short_loop1:
         DECW      HL
         XCHW      AX, HL
         CMPW      AX, #0x0
         NOP
         XCHW      AX, HL
-        BNZ       delay_ms_loop1
+        BNZ       delay_short_loop1
         INCW      DE
         CMPW      AX, DE
         SKZ
-        BNC       delay_ms_loop0
-delay_ms_loop2:
+        BNC       delay_short_loop0
+delay_short_loop2:
         POP       DE
         RET
 
@@ -49,12 +50,12 @@ delay_ms_loop2:
 
 delay_block:
         MOVW      AX, #0x0A
-        call delay_ms
+        call delay_short
         RET
 
 delay_char:
         MOVW      AX, #0x01
-        call delay_ms
+        call delay_short
         RET
         
         MOV      A, #0xFF
@@ -131,45 +132,18 @@ send_byte_2:
         RET       
 
 
-
-blinky:
-        //mov a, #200
-        MOVW      AX, #0x64
-        call delay_ms
-
-        //LED toggle
-        MOV1      CY, 0xFFF07.7
-        NOT1      CY
-        MOV1      0xFFF07.7, CY
-        ;SET1      S:0xFFF07.7
-        
-        ;MOVW      AX, #0xAA
-        ;MOV      A, #0xAA
-        ;call send_byte
-
-        br        blinky
-
-
-
-
-
-
-
-
-
-
 asmmain:
         mov     es, #0 ; clear registers for memory addressing
         movw    de, #0
         nop
-    
+
         // Conifgure LED pullup
         // PU7_bit.no7 = 1;
         // 000000 363700                MOVW      HL, #0x37
         MOVW      HL, #0x37
         // 000003 71F2                  SET1      [HL].7
         SET1      [HL].7
-    
+
         // Configure LED as output
         // PM7_bit.no7 = 0;
         // 000005 717B27                CLR1      0xFFF27.7
@@ -177,26 +151,11 @@ asmmain:
         // LED on
         CLR1      0xFFF07.7
 
-      //NRZ high
+        //NRZ high
         SET1      S:0xFFF04.0
-      //TOOL0 as output
-      //PM4_bit.no0 = 0;
-      CLR1      0xFFF24.0
-
-
-		/*
-        MOV1      CY, 0xFFF07.7
-        NOT1      CY
-        MOV1      0xFFF07.7, CY
-
-        MOV1      CY, 0xFFF07.7
-        NOT1      CY
-        MOV1      0xFFF07.7, CY
-
-        //SET1      S:0xFFF07.7
-        BR $
-		*/
-
+        //TOOL0 as output
+        //PM4_bit.no0 = 0;
+        CLR1      0xFFF24.0
 
 
         // set1    byte_F0090.0  // enabled access to data flash, just setting everytime as its easier to fit in asm
@@ -208,81 +167,74 @@ asmmain:
         //What exactly is this register?
         ;set1    ES:0xF0090.0
         set1    0xF0090.0
-        ;call blinky
-  
+
         ; C code version
         ;MOV       L, #0x90
         ;SET1      [HL].0
 
 
         movw ax, #100
-        call delay_ms
+        call delay_short
 
-#if 0
-test1:
-        mov a, #0
-        call send_byte
-
-        mov     es, #0000h
-        movw    de, #0100h
-        mov     a, es:[de]
-        call send_byte
-
-        mov     es, #0000h
-        movw    de, #0101h
-        mov     a, es:[de]
-        call send_byte
-
-        mov     es, #0000h
-        movw    de, #0102h
-        mov     a, es:[de]
-        call send_byte
-
-        mov     es, #0000h
-        movw    de, #0103h
-        mov     a, es:[de]
-        call send_byte
-      
-        br test1
-#endif
-
-      /*
-      Data flash
-      */
+        /*
+        Data flash
+        */
         mov     es, #0 ; clear registers for memory addressing
         movw    de, #0
 
 
-    /*
-R5F100AC
-Code Flash (Address : 0x00000000,  Size : 32 K,  Erase Size : 1 K)
-Data Flash (Address : 0x000F1000,  Size : 4 K,  Erase Size : 1 K)
-    */
+        /*
+        R5F100AC
+        Code Flash (Address : 0x00000000,  Size : 32 K,  Erase Size : 1 K)
+        Data Flash (Address : 0x000F1000,  Size : 4 K,  Erase Size : 1 K)
+        */
         //mov     es, #0x000F ; clear registers for memory addressing
         //movw    de, #0x1000
-    
-        mov     es, #0x0008
-        movw    de, #0x0000
 
-orig_F07E6:
 
         /*
-        //LED toggle
-        MOV1      CY, 0xFFF07.7
-        NOT1      CY
-        MOV1      0xFFF07.7, CY
+        Noise at power on
+        Add a magic word (AA AA AA AA) to make easier to find start
+        */
+        mov a, #AA
+        call send_byte
+        mov a, #AA
+        call send_byte
+        mov a, #AA
+        call send_byte
+        mov a, #AA
+        call send_byte
 
-        movw ax, #10
-        call delay_ms
-        space out every 0x100 bytes
+
+//Code flash @ 0x00_0000
+#if 1
+        mov     es, #0x0000
+        movw    de, #0x0000
+#endif
+//Boot ROM @ 0x0E_F000
+#if 0
+        mov     es, #0x000E
+        movw    de, #0xF000
+#endif
+//Data flash @ 0x0F_1000
+#if 0
+        mov     es, #0x000F
+        movw    de, #0x1000
+#endif
+
+loop_es:
+        /*
+        Add delay to space out every 0x100 bytes
+        -Helps with error recovery by adding a long break
+        -Makes traces more readable
         */
         movw ax, de
         SHLW ax, 8
         cmp    a, #0
-
         public skip_delay
         bnz     skip_delay
         call delay_block
+
 skip_delay:
 
         ;mov     a, es:[de]  ; index memory 1 byte at a time and move to accumulator
@@ -296,8 +248,8 @@ skip_delay:
         movw    ax, de
         cmpw    ax, #0    
         
-        bnz     orig_F07E6   ; if de hasnt wrapped keep dumping
-        br      orig_F07F9     ; if it has, go to es inc routine
+        bnz     loop_es   ; if de hasnt wrapped keep dumping
+        br      inc_es     ; if it has, go to es inc routine
         
         ; ? w/e see if it works w/o this
         ;  0x55          ; overwrites ocd flag!
@@ -306,16 +258,13 @@ skip_delay:
         nop
         nop
         
-orig_F07F9:
-        ;call blinky
-        
+inc_es:
         mov     a, es
         inc     a
         and     a, #0x0F   ; if es is addressing 0xfxxxx we are at last addressable region
         mov     es, a     ; set es with incremented range
 
-
-        br      orig_F07E6
+        br      loop_es
         
 
         STOP                      ; End of program

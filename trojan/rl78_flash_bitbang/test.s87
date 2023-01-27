@@ -1,0 +1,48 @@
+#if 0
+test1:
+        mov a, #0
+        call send_byte
+
+        mov     es, #0000h
+        movw    de, #0100h
+        mov     a, es:[de]
+        call send_byte
+
+        mov     es, #0000h
+        movw    de, #0101h
+        mov     a, es:[de]
+        call send_byte
+
+        mov     es, #0000h
+        movw    de, #0102h
+        mov     a, es:[de]
+        call send_byte
+
+        mov     es, #0000h
+        movw    de, #0103h
+        mov     a, es:[de]
+        call send_byte
+      
+        br test1
+#endif
+
+
+
+blinky:
+        //mov a, #200
+        MOVW      AX, #0x64
+        call delay_short
+
+        //LED toggle
+        MOV1      CY, 0xFFF07.7
+        NOT1      CY
+        MOV1      0xFFF07.7, CY
+        ;SET1      S:0xFFF07.7
+        
+        ;MOVW      AX, #0xAA
+        ;MOV      A, #0xAA
+        ;call send_byte
+
+        br        blinky
+
+
