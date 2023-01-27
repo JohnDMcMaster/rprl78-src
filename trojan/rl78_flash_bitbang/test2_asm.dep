@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+
+<project>
+  <fileVersion>2</fileVersion>
+  <fileChecksum>155534561</fileChecksum>
+  <configuration>
+    <name>Debug</name>
+    <outputs>
+      <file>$PROJ_DIR$\asmmain.s87</file>
+      <file>$PROJ_DIR$\lnkr5f100le.xcl</file>
+      <file>$PROJ_DIR$\Debug\List\test2_asm.map</file>
+      <file>$PROJ_DIR$\Debug\Exe\test2_asm.hex</file>
+      <file>$PROJ_DIR$\Debug\Obj\asmmain.r87</file>
+      <file>$PROJ_DIR$\Debug\List\asmmain.lst</file>
+    </outputs>
+    <file>
+      <name>$PROJ_DIR$\asmmain.s87</name>
+      <outputs>
+        <tool>
+          <name>ARL78</name>
+          <file> 4 5</file>
+        </tool>
+      </outputs>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\Debug\Exe\test2_asm.hex</name>
+      <outputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 2</file>
+        </tool>
+      </outputs>
+      <inputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 1 4</file>
+        </tool>
+      </inputs>
+    </file>
+    <file>
+      <name>[ROOT_NODE]</name>
+      <outputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 3 2</file>
+        </tool>
+      </outputs>
+    </file>
+  </configuration>
+  <configuration>
+    <name>Release</name>
+    <outputs>
+      <file>$PROJ_DIR$\asmmain.s87</file>
+      <file>$PROJ_DIR$\lnkr5f100le.xcl</file>
+      <file>$PROJ_DIR$\Release\Exe\test2_asm.d87</file>
+      <file>$TOOLKIT_DIR$\lib\dlrl78nn1n.r87</file>
+      <file>$PROJ_DIR$\Release\Obj\asmmain.r87</file>
+      <file>$PROJ_DIR$\Release\List\asmmain.lst</file>
+      <file>$PROJ_DIR$\Release\Exe\test2_asm.hex</file>
+    </outputs>
+    <file>
+      <name>$PROJ_DIR$\asmmain.s87</name>
+      <outputs>
+        <tool>
+          <name>ARL78</name>
+          <file> 4 5</file>
+        </tool>
+      </outputs>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\Release\Exe\test2_asm.d87</name>
+      <inputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 1 4 3</file>
+        </tool>
+      </inputs>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\Release\Exe\test2_asm.hex</name>
+      <inputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 1 4 3</file>
+        </tool>
+      </inputs>
+    </file>
+    <file>
+      <name>[ROOT_NODE]</name>
+      <outputs>
+        <tool>
+          <name>XLINK</name>
+          <file> 2</file>
+        </tool>
+      </outputs>
+    </file>
+    <forcedrebuild>
+      <name>[MULTI_TOOL]</name>
+      <tool>XLINK</tool>
+    </forcedrebuild>
+    <forcedrebuild>
+      <name>[REBUILD_ALL]</name>
+    </forcedrebuild>
+  </configuration>
+</project>
+
+
