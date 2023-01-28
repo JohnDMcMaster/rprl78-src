@@ -67,6 +67,38 @@ def decode_sig(buf, hexlify=True, verbose=False):
     return ss
 
 
+def iter_flash_write_blocks(ss):
+    block_size = 0x400
+    block_mask = 0xFFFC00
+    code_addr_low = 0x000000
+    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
+    data_addr_low = 0x0F1000
+    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
+    block_addrs = [
+        (code_addr_low, code_addr_high),
+        (data_addr_low, data_addr_high),
+    ]
+    for addr_min, addr_max in block_addrs:
+        for start_addr in range(addr_min, addr_max, block_size):
+            yield start_addr
+
+
+def iter_flash_erase_blocks(ss):
+    block_size = 0x1000
+    block_mask = 0xFFFC00
+    code_addr_low = 0x000000
+    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
+    data_addr_low = 0x0F1000
+    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
+    block_addrs = [
+        (code_addr_low, code_addr_high),
+        (data_addr_low, data_addr_high),
+    ]
+    for addr_min, addr_max in block_addrs:
+        for start_addr in range(addr_min, addr_max, block_size):
+            yield start_addr
+
+
 def block_blank_checks(rl78, ss, hexlify=True, verbose=False):
     ret = {}
     """
@@ -114,6 +146,15 @@ def block_blank_checks(rl78, ss, hexlify=True, verbose=False):
             }
             ret["0x%06X" % start_addr] = jthis
     return ret
+
+
+def erase_all(rl78=None, ss=None):
+    if not rl78:
+        rl78 = try_a1()
+    if not ss:
+        ss = decode_sig(rl78.a.silicon_sig())
+    for addr in iter_flash_erase_blocks(ss):
+        rl78.a.erase_block(addr)
 
 
 def dump_meta_json(rl78=None):

@@ -25,6 +25,13 @@ RP2040 pinout
 Other: I was using Dediprog socket modules
 TODO: design PCBs in addition to my protoboard version
 
+# Software setup
+
+Experimenting with different micropython implementations. Currently three interfaces are used:
+* ampy
+* mpremote
+* DIY interface
+
 
 # Reading memory
 

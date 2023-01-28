@@ -489,8 +489,9 @@ class ProtoA:
 
     def invert_boot_cluster(self):
         # XXX can't be set via protoA :'(
-        sec = self.security_get()
-        sec = bytes([sec[0] ^ 1] + sec[1:])
+        # McMaster: is acked but not actually set
+        sec = bytearray(self.security_get())
+        sec = bytes([sec[0] ^ 1]) + sec[1:]
         return self.security_set(sec)
 
     def cmd19(self):
@@ -534,11 +535,14 @@ class ProtoA:
         # erase block = 0x400, everything else can use 0x100
         if addr % 0x400 or len(data) % 0x400:
             raise ValueError()
+        time.sleep(0.1)
         for i in range(0, len(data), 0x400):
             self.erase_block(addr + i)
         # XXX should be able to handle multiple blocks, not sure why it hangs
         #self.program(addr, data)
         for i in range(0, len(data), 0x100):
+            print("offset", i)
+            time.sleep(0.1)
             self.program(addr + i, data[i:i + 0x100])
         return self.verify(addr, data)
 
@@ -751,7 +755,11 @@ class RL78:
             # regulator seems to auto-adjust anyways...
             # feeding with 1.7v uses slower mode, 1.8v and 2.1v are same, slightly faster speed
             self.verbose and print("setting baudrate")
-            r = self.a.set_baudrate(rl78_br, 21)
+            # r = self.a.set_baudrate(rl78_br, 0x21)
+            # dipping to about 3.1V sometimes...maybe this will make more reliable?
+            # RenesasError: Reset failed: baud ACK fail w/ 5
+            # r = self.a.set_baudrate(rl78_br, 0x10)
+            r = self.a.set_baudrate(rl78_br, 0x21)
             self.verbose and print("checking result")
             if r[0] != ProtoA.ST_ACK:
                 if r[0] == ProtoA.ST_PROTECT_ERR:

@@ -24,6 +24,11 @@ def uprun_misc(func, **kwargs):
     return uprun("from rl78 import misc; misc.%s(%s)" % (func, argstr))
 
 
+def max_code_address():
+    meta = json5.loads(uprun_misc("dump_meta_json"))
+    return meta["silicon_sig"]["code_flash_addr_hi"]
+
+
 def probe(aggressive=False, out_dir=None):
     print("Writing results to %s" % (out_dir, ))
     if not os.path.exists(out_dir):

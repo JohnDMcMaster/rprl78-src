@@ -5,6 +5,7 @@ import pexpect
 import os
 import time
 import re
+import binascii
 
 
 def default_port():
@@ -120,6 +121,7 @@ class RP2040MP:
         self.device = device
         self.ser = None
         self.e = None
+        self.timeout = 1.0
         self.init()
 
     def init(self):
@@ -168,11 +170,13 @@ class RP2040MP:
         # time.sleep(0.1)
         self.init()
 
-    def expect(self, s, timeout=1.0):
+    def expect(self, s, timeout=None):
+        if timeout is None:
+            timeout = self.timeout
         self.e.expect(s, timeout=timeout)
         return self.e.before
 
-    def cmd(self, cmd, reply=True, retry=False):
+    def cmd(self, cmd, reply=True, retry=False, timeout=None):
         '''Send raw command and get string result'''
 
         attempts = 1
@@ -180,6 +184,7 @@ class RP2040MP:
             attempts = 3
         for attempt in range(attempts):
             try:
+                tstart = time.time()
                 strout = cmd + "\r\n"
                 self.verbose and print("cmd out: %s" % strout.strip())
                 self.e.ser.flushInput()
@@ -195,7 +200,7 @@ class RP2040MP:
                 if not reply:
                     return None
 
-                ret = self.expect('>>>')
+                ret = self.expect('>>>', timeout=timeout)
                 self.verbose and print('cmd ret: chars %u' % (len(ret), ))
                 # self.verbose and util.hexdump(ret)
                 if "Traceback (most recent call last):" in ret:
@@ -203,6 +208,8 @@ class RP2040MP:
                                                    '').replace('\n', '; ')
                     raise BadCommand("Failed command: %s, got: %s" %
                                      (strout.strip(), outterse))
+                tend = time.time()
+                self.verbose and print("Took %0.3f sec" % (tend - tstart, ))
                 return ret
             except pexpect.TIMEOUT:
                 if attempt < attempts - 1:
@@ -264,3 +271,6 @@ class RP2040MP:
         s = self.cmd("print(%s)" % var).strip()
         s = s.split("\n")[-1]
         return {"False": False, "True": True}[s]
+
+    def to_hex_str(self, buf):
+        return '"%s"' % (bytes(buf).hex(), )
