@@ -622,7 +622,7 @@
         </option>
         <option>
           <name>XclFile</name>
-          <state>C:\buffer\entropic\trojan\test2_asm\lnkr5f100le.xcl</state>
+          <state>$PROJ_DIR$\lnkr5f100le.xcl</state>
         </option>
         <option>
           <name>XclFileSlave</name>
@@ -1476,7 +1476,7 @@
         </option>
         <option>
           <name>XclFile</name>
-          <state>C:\buffer\entropic\trojan\test2_asm\lnkr5f100le.xcl</state>
+          <state>$PROJ_DIR$\lnkr5f100le.xcl</state>
         </option>
         <option>
           <name>XclFileSlave</name>
