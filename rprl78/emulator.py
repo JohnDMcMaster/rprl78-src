@@ -74,20 +74,13 @@ class Emulator:
         relative to power cycles
         Workaround: if a timeout occurs, re-establish ProtoA and retry
         """
-        def do_cmd():
-            self.mp.cmd("rl78.a.write(addr=0x%06X, data=%s)" %
-                        (addr, repr(data)),
-                        timeout=1.2)
-
         # Took 0.563 sec
-        # However can stall, where 1.0 sec timeout needs to propagate
-
-        try:
-            do_cmd()
-        except BadCommand:
-            self.verbose and print("WARNING: recovering from wedge")
-            self.try_a1()
-            do_cmd()
+        # However can wedge the entire chip, where 1.0 sec timeout needs to propagate
+        # Erase is fine, its the first write that causes issue
+        # Have not yet found a solution to the wedge
+        # Considered rebooting, but that doesn't seem to help much
+        self.mp.cmd("rl78.a.write(addr=0x%06X, data=%s)" % (addr, repr(data)),
+                    timeout=1.2)
 
     def a_silicon_sig(self):
         print(self.mp.cmd("rl78.a.silicon_sig()"))

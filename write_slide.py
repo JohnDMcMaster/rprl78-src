@@ -72,7 +72,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Write hex file, erasing minimal flash")
+        description=
+        "Write firmware late in the flash, filling with NOPs before it. Direct via RP2040"
+    )
     add_bool_arg(parser, "--write", default=True, help="Write after erasing")
     parser.add_argument("--max-addr", default=None)
     parser.add_argument("--verbose", action="store_true")
