@@ -6,6 +6,7 @@ import json
 import json5
 import intelhex
 from rprl78 import emulator
+from rprl78 import rp2040
 
 # 0x400
 BLOCK_SIZE = 1024
@@ -24,8 +25,14 @@ def get_pages(fwd):
     return sorted(list(pages))
 
 
-def run(fn, write=True):
-    emu = emulator.Emulator()
+def run(fn, write=True, emu=None):
+    if 0:
+        print("Restarting rp2040...")
+        rp2040.reset()
+        print("Reset")
+
+    if emu is None:
+        emu = emulator.Emulator()
 
     fw = intelhex.IntelHex(fn)
     fwd = fw.todict()

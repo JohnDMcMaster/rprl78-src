@@ -6,6 +6,7 @@ import os
 import time
 import re
 import binascii
+import subprocess
 
 
 def default_port():
@@ -121,7 +122,8 @@ class RP2040MP:
         self.device = device
         self.ser = None
         self.e = None
-        self.timeout = 1.0
+        # rl78 has 1.0 timeout
+        self.timeout = 1.25
         self.init()
 
     def init(self):
@@ -188,6 +190,7 @@ class RP2040MP:
                 strout = cmd + "\r\n"
                 self.verbose and print("cmd out: %s" % strout.strip())
                 self.e.ser.flushInput()
+                self.e.ser.flushOutput()
                 self.e.buffer = ""
                 # FIXME: possibly writing above 64 chars is unreliable?
                 # hack: slow down and chunk writes
@@ -274,3 +277,9 @@ class RP2040MP:
 
     def to_hex_str(self, buf):
         return '"%s"' % (bytes(buf).hex(), )
+
+
+def reset():
+    # drops into repl...
+    # subprocess.check_call(["mpremote", "soft-reset"])
+    subprocess.check_call(["ampy", "-p", "/dev/ttyACM0", "reset"])

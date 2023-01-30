@@ -44,16 +44,22 @@ def probe(aggressive=False, out_dir=None):
     """
     def write_jraw(basename, jraw):
         print("  Writing output...")
+        fn = os.path.join(out_dir, basename)
         if 0:
             with open(os.path.join(out_dir, basename) + ".raw", "wb") as f:
                 f.write(jraw)
         j = json5.loads(jraw)
-        writej(os.path.join(out_dir, basename), j)
+        writej(fn, j)
 
     print("Dumping meta json...")
     jraw = uprun_misc("dump_meta_json")
     if out_dir:
         write_jraw("meta.json", jraw)
+        print("  Scraping...")
+        fn_in = os.path.join(out_dir, "meta.json")
+        fn_out = os.path.join(out_dir, "meta.txt")
+        cmd = "./scrape.py %s  >%s" % (fn_in, fn_out)
+        subprocess.check_call(cmd, shell=True)
     print("Dumping flash checksums...")
     jraw = uprun_misc("dump_checksum", printj=True)
     if out_dir:

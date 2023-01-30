@@ -504,10 +504,19 @@ class ProtoA:
         EA = pack24(addr + size - 1)
         return self.send_frame(struct.pack('B', self.COM_19) + SA + EA)
 
-    def erase_block(self, addr):
+    def erase_block(self, addr, verify=True):
+        if verify:
+            pre = self.checksum(addr, 0x400)
+            print("erase checksum pre: 0x%04X" % pre)
+
         r = self.send_frame(struct.pack('B', self.COM_ERASE) + pack24(addr))
         if r[0] != self.ST_ACK:
             raise st1_exception(r)
+
+        if verify:
+            post = self.checksum(addr, 0x400)
+            print("erase checksum post: 0x%04X" % post)
+            assert post == 0x400
 
     def program(self, addr, data):
         SA = pack24(addr)

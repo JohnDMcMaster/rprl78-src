@@ -68,7 +68,7 @@ def decode_sig(buf, hexlify=True, verbose=False):
 
 
 def iter_flash_write_blocks(ss):
-    block_size = 0x400
+    block_size = 0x100
     block_mask = 0xFFFC00
     code_addr_low = 0x000000
     code_addr_high = ss.get("code_flash_addr_hi") & block_mask
@@ -84,7 +84,7 @@ def iter_flash_write_blocks(ss):
 
 
 def iter_flash_erase_blocks(ss):
-    block_size = 0x1000
+    block_size = 0x400
     block_mask = 0xFFFC00
     code_addr_low = 0x000000
     code_addr_high = ss.get("code_flash_addr_hi") & block_mask
