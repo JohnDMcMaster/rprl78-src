@@ -65,6 +65,8 @@ def run(fn_in, fn_out, write=True):
 
 
 def main():
+    assert 0, "Doesn't work: undocumented flash write restrictions?"
+
     import argparse
 
     parser = argparse.ArgumentParser(

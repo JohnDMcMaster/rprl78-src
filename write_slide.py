@@ -130,6 +130,8 @@ def run(fn, emu=None, bulk_erase=False):
 
 
 def main():
+    assert 0, "Doesn't work: undocumented flash write restrictions?"
+
     import argparse
 
     parser = argparse.ArgumentParser(
