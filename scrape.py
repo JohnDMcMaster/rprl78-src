@@ -236,8 +236,14 @@ def print_silicon_sig(buf):
     if 1:
         print("Device code:", ss.get("device_code"))
         print("Device name:", ss.get("device_name"))
-        print("Code flash address hi: 0x%06X" % ss.get("code_flash_addr_hi"))
-        print("Data flash address hi: 0x%06X" % ss.get("data_flash_addr_hi"))
+        code_hi = ss.get("code_flash_addr_hi")
+        code_sz = code_hi - 0 + 1
+        print("Code flash address hi: 0x%06X => 0x%06X bytes" %
+              (code_hi, code_sz))
+        data_hi = ss.get("data_flash_addr_hi")
+        data_sz = data_hi - 0x0F1000 + 1
+        print("Data flash address hi: 0x%06X => 0x%06X bytes" %
+              (data_hi, data_sz))
         # print("Data flash address hi", ss.get("data_flash_addr_hi_raw"))
         # print("Data flash address hi", ss.get("data_flash_addr_hi_raw"))
         print("FW ver:", ss.get("fw_ver"))
