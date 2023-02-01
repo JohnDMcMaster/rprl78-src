@@ -69,7 +69,7 @@ def decode_sig(buf, hexlify=True, verbose=False):
 
 def iter_flash_write_blocks(ss):
     block_size = 0x100
-    block_mask = 0xFFFC00
+    block_mask = 0xFFFF00
     code_addr_low = 0x000000
     code_addr_high = ss.get("code_flash_addr_hi") & block_mask
     data_addr_low = 0x0F1000
@@ -79,7 +79,7 @@ def iter_flash_write_blocks(ss):
         (data_addr_low, data_addr_high),
     ]
     for addr_min, addr_max in block_addrs:
-        for start_addr in range(addr_min, addr_max, block_size):
+        for start_addr in range(addr_min, addr_max + block_size, block_size):
             yield start_addr
 
 
@@ -95,7 +95,7 @@ def iter_flash_erase_blocks(ss):
         (data_addr_low, data_addr_high),
     ]
     for addr_min, addr_max in block_addrs:
-        for start_addr in range(addr_min, addr_max, block_size):
+        for start_addr in range(addr_min, addr_max + block_size, block_size):
             yield start_addr
 
 
@@ -200,15 +200,6 @@ def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
         print("code_flash_addr_hi", "0x%06X" % ss.get("code_flash_addr_hi"))
         print("data_flash_addr_hi", "0x%06X" % ss.get("data_flash_addr_hi"))
     block_size = 0x100
-    block_mask = 0xFFFC00
-    code_addr_low = 0x000000
-    code_addr_high = ss.get("code_flash_addr_hi") & block_mask
-    data_addr_low = 0x0F1000
-    data_addr_high = ss.get("data_flash_addr_hi") & block_mask
-    block_addrs = [
-        (code_addr_low, code_addr_high),
-        (data_addr_low, data_addr_high),
-    ]
     # ret = {}
     if printj:
         print("{")
@@ -217,23 +208,23 @@ def dump_checksum(rl78=None, ss=None, printj=False, omit_blank=True):
         print("Iterating...")
     #ret = []
     blanks = 0
-    for addr_min, addr_max in block_addrs:
-        for start_addr in range(addr_min, addr_max, block_size):
-            checksum = rl78.a.checksum(start_addr, block_size)
-            # print("0x%06X: 0x%04X" % (start_addr, checksum))
-            if printj:
-                print(
-                    '        "0x%06X": {"checksum": %u, "address": %u, "size": %u},'
-                    % (start_addr, checksum, start_addr, block_size))
+
+    for start_addr in iter_flash_write_blocks(ss):
+        checksum = rl78.a.checksum(start_addr, block_size)
+        # print("0x%06X: 0x%04X" % (start_addr, checksum))
+        if printj:
+            print(
+                '        "0x%06X": {"checksum": %u, "address": %u, "size": %u},'
+                % (start_addr, checksum, start_addr, block_size))
+        else:
+            if omit_blank and checksum == 0x100:
+                blanks += 1
+                continue
             else:
-                if omit_blank and checksum == 0x100:
-                    blanks += 1
-                    continue
-                else:
-                    print("0x%06X: 0x%04X" % (start_addr, checksum))
-            # ret["0x%06X" % start_addr] = {"checksum": checksum, "address": start_addr, "size": block_size}
-            # ret["0x%06X" % start_addr] = checksum
-            #ret.append((start_addr, checksum))
+                print("0x%06X: 0x%04X" % (start_addr, checksum))
+        # ret["0x%06X" % start_addr] = {"checksum": checksum, "address": start_addr, "size": block_size}
+        # ret["0x%06X" % start_addr] = checksum
+        #ret.append((start_addr, checksum))
     if printj:
         print("    }")
         print("}")
