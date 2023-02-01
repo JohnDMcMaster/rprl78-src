@@ -3,6 +3,10 @@ This is intended to allow more advanced device programming
 (ex: set finer grained security permissions) as well as to
 allow security research
 
+Special thanks to:
+* fail0verflow for providing the starting point for this project
+* vv1ld for providing reference shellcode in SYSGLIITCH
+
 How:
 Use an RP2040 which has internal GPIO-UART muxes to simplify the original test setup
 It runs micropython => the code can be ported over relatively quickly
@@ -54,3 +58,5 @@ Fork of: https://github.com/JohnDMcMaster/rl78-debug
 Note: there are also other fixes incorporated
 (ex: stop bits, more proper ack handling)
 
+Shell code is based on:
+https://github.com/VV1LD/SYSGLITCH
